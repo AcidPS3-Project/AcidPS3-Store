@@ -17,7 +17,7 @@ CONTENTID	:=	HP0031-$(APPID)_00-ACIDPS3STORE0000
 SFOXML		:=	param/sfo.xml
 ICON0       :=  param/ICON0.PNG
 
-include $(PSL1GHT)/ppu_rules_nopic
+include $(PSL1GHT)/ppu_rules
 
 # aditional scetool flags (--self-ctrl-flags, --self-cap-flags...)
 SCETOOL_FLAGS	+=	
@@ -39,7 +39,7 @@ INCLUDES	:=	include
 #---------------------------------------------------------------------------------
 # any extra libraries we wish to link with the project
 #---------------------------------------------------------------------------------
-LIBS		:=	-lfont -lfreetype -ltiny3d -lsimdmath -lgcm_sys -lio -lsysutil -lrt -llv2 -lsysmodule \
+LIBS		:=	-lfont3d -lfreetype -ltiny3d -lsimdmath -lgcm_sys -lio -lsysutil -lrt -llv2 -lsysmodule \
 			-laudioplayer -lmpg123 -logg -lspu_sound -laudio -lm -lz -lpngdec -lssl \
 			-lnet -lnetctl -lhttp -lhttputil -lrsx
 

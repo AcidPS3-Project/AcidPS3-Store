@@ -29,7 +29,7 @@
 
 #include "asimov_ttf_bin.h"
 
-char data_url[] = "https://github.com/AcidPS3-Project/AcidPS3Data/raw/refs/heads/main/games/";
+char data_url[] = "https://github.com/AcidPS3-Project/AcidPS3Data/raw/refs/heads/main/";
 char assets_url[] = "http://acidnt31.w10.site/assets/store/";
 
 #define HTTP_YES		1
@@ -63,6 +63,7 @@ char manifestVersion[16];
 char global_name[] = "AcidPS3 Store";
 char global_version[16];
 int check_update = 1;
+int show_screen_idk = 0;
 
 int http_init(void)
 {
@@ -373,8 +374,8 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 
 
 
-#include "spu_soundlib.h"
-#include "audioplayer.h"
+#include "soundlib/spu_soundlib.h"
+#include "soundlib/audioplayer.h"
 #include "spu_soundmodule.bin.h"
 
 // IMPORT IMAGES
@@ -394,7 +395,7 @@ float lerp(float min, float max, float ratio)
 int ttf_inited = 0;
 int store_loaded = 0;
 int menu_selected = 0;
-int menu_type = 0; // 0 - ps3 games, 1 - psp games, 2 - update
+int menu_type = 0;
 int menu_index = 0;
 
 int downloading_game = 0;
@@ -462,12 +463,15 @@ typedef struct
     char name[64];
     char author[64];
     char version[16];
-    char console[16];
+    char type[16];
 
     char pkg[256];
     char icon[256];
+	
+    char hidden_game[8];
 
     char description[2048];
+    char short_desc[1024];
 } StoreApp;
 
 StoreApp gApps[MAX_APPS];
@@ -488,7 +492,9 @@ static char download_url[512];
 static char download_file[256];
 static char download_dest[256];
 
-void manifest_parse()
+static sys_ppu_thread_t manifest_manage;
+
+static void manifest_parse(void *arg)
 {
 	int i = 0;
 	FILE *fp = fopen(manifest_path, "rb");
@@ -532,12 +538,15 @@ void manifest_parse()
 			strcpy(gApps[i].author, cJSON_GetObjectItem(app,"author")->valuestring);
 			strcpy(gApps[i].version, cJSON_GetObjectItem(app,"version")->valuestring);
 			
-			strcpy(gApps[i].console, cJSON_GetObjectItem(app,"console")->valuestring);
+			strcpy(gApps[i].type, cJSON_GetObjectItem(app,"type")->valuestring);
 			
 			strcpy(gApps[i].pkg, cJSON_GetObjectItem(app,"pkg")->valuestring);
 			strcpy(gApps[i].icon, cJSON_GetObjectItem(app,"icon")->valuestring);
 			
+			strcpy(gApps[i].hidden_game, cJSON_GetObjectItem(app,"hidden")->valuestring);
+			
 			strcpy(gApps[i].description, cJSON_GetObjectItem(app,"description")->valuestring);
+			strcpy(gApps[i].short_desc, cJSON_GetObjectItem(app,"short_desc")->valuestring);
 			printf("GAME NAME: %s; ID: %s\n", gApps[i].name, gApps[i].id);
 		}
 		
@@ -548,6 +557,7 @@ void manifest_parse()
 	
 	check_update=0;
 	manifest_done = 1;
+    sysThreadExit(0);
 }
 
 void EmptyDialogCallback(msgButton button, void *usrData)
@@ -577,7 +587,6 @@ static void DownloadThread(void *arg)
 		if(!manifest_gather)
 		{
 			manifest_gather=1;
-			manifest_parse();
 		}
 		else
 		{
@@ -1000,32 +1009,26 @@ void RefreshVisibleApps()
 
     for(i = 0; i < gAppCount; i++)
     {
-        if(menu_type == 0 && strcmp(gApps[i].console, "ps3") != 0)
-            continue;
-
-        if(menu_type == 1 && strcmp(gApps[i].console, "psp") != 0)
-            continue;
-
+        if(menu_type == 0 && strcmp(gApps[i].hidden_game, "yes") == 0) continue;
         visibleApps[visibleCount++] = i;
     }
 
-    if(menu_index >= visibleCount)
-        menu_index = visibleCount - 1;
+    if(menu_index >= visibleCount) menu_index = visibleCount - 1;
 
-    if(menu_index < 0)
-        menu_index = 0;
+    if(menu_index < 0) menu_index = 0;
 }
 
 float menu_index_i = 0;
+int scrollRow = 0;
+int cols = 4;
 
 void drawScene()
 {
 	u32 color = 0xffffffff;
-	u32 color2 = 0x000077ff;
 	int i = 0;
 	int off_x = -20;
+	int base_x = 454;
 	int off_y = 60;
-	int space_y = 120;
     tiny3d_Project2D();
     
 	static float wave_t = 0.0f;
@@ -1037,44 +1040,69 @@ void drawScene()
 	
 	menu_index_i = lerp(menu_index_i, menu_index, 0.1f);
 	
-	DrawRect4(-99, -99, 1280, 720, 5, 0x333399ff, 0x333399ff, 0x111188ff, 0x111188ff);
+	DrawRect4(-99, -99, 1280, 720, 6, 0x333399ff, 0x333399ff, 0x111188ff, 0x111188ff);
 	
-	DrawWave(240.0f, 18.0f, 0.015f, wave_t * 0.7f, 70.0f, 4, 0x2020a0ff, 0x00000000);
-	DrawWave(299.0f, 24.0f, 0.012f, wave_t, 80.0f, 3, 0x3030ffff, 0x00000000);
+	DrawWave(240.0f, 32.0f, 0.015f, wave_t * 0.7f, 70.0f, 5, 0x2020a0ff, 0x00000000);
+	DrawWave(299.0f, 48.0f, 0.012f, wave_t, 80.0f, 4, 0x3030ffff, 0x00000000);
 	
-	//DrawSprite2D(0, 0, 0, 32, 32, 16, 16, 320, 320, 2, color);
-	//DrawSpriteUI(-34, -22, 0, 0, 384, 192, 1024, 1024, 302, 112, 1, color);
-	
-	if(!manifest_gather)
+	if(!show_screen_idk)
 	{
-		DrawRect(-66, 410+off_y, 1280, 720, 0, color2);
-		DrawFormatString(-20, 420+off_y, "Collecting data from our server...");
+		DrawFormatString(off_x, 64, "Collecting data from our server...");
+		DrawFormatString(off_x, 96, "It won't take long.");
 	}
 	else
 	{
 		if(!menu_selected)
 		{
+			int iconW = 100;
+			int iconH = 100;
+			int rowsVisible = 4;
+			
+			DrawRect4(off_x-5, off_y-5, 392, 392, 3, 0x333399dd, 0x333399dd, 0x111188dd, 0x111188dd);
+
+			int selectedRow = menu_index / cols;
+			if(selectedRow < scrollRow) scrollRow = selectedRow;
+			if(selectedRow >= scrollRow + rowsVisible) scrollRow = selectedRow - rowsVisible + 1;
+
 			for(i = 0; i < visibleCount; i++)
 			{
 				int app = visibleApps[i];
-				int app_y_pos = off_y+(i*space_y)+((-menu_index_i)*space_y);
-				
+				int row = i / cols;
+				int col = i % cols;
+				int app_x_pos = base_x + col * iconW;
+				int app_y_pos = off_y + (row - scrollRow) * iconH;
+				if(row < scrollRow || row >= scrollRow + rowsVisible) continue;
+
 				if(gIcons[app].loaded) SetTexture(gIcons[app].icon, gIcons[app].icon_off);
-					else SetTexture(DefaultIcon, DefaultOff);
+				else SetTexture(DefaultIcon, DefaultOff);
 				
-				DrawIcon(off_x, app_y_pos, 1, 320/2, 176/2, color);
-				SetFontSize(28, 32);
-				DrawFormatString(off_x+170, app_y_pos, "%s %s", gApps[app].name, gApps[app].version);
-				SetFontSize(16, 16);
-				DrawFormatString(off_x+170, 36+app_y_pos, "Developed by: %s", gApps[app].author);
+				u32 viscolor = 0xaaaaaaff;
+				if(i == menu_index) viscolor = 0xffffffff;
 				
-				if(i==menu_index)
-					DrawRectOutline(off_x-5, app_y_pos-5, 1000, 95, 3, 0, color2);
+				DrawIcon(app_x_pos, app_y_pos, 1, 96, 96, viscolor);
 			}
-			SetFontSize(28, 32);
+			SetFontSize(20, 22);
+			int selected_app = visibleApps[menu_index];
 			
-			DrawRect(-66, 333+off_y, 1280, 720, 0, color2);
-			DrawFormatString(off_x, 420+off_y, "^/v - LIST GAMES      X - SELECT");
+			if(gIcons[selected_app].loaded) SetTexture(gIcons[selected_app].icon, gIcons[selected_app].icon_off);
+				else SetTexture(DefaultIcon, DefaultOff);
+			
+			DrawIcon(off_x, off_y, 1, 156, 156, color);
+			DrawWrappedText(off_x+160, off_y, 20, 24, gApps[selected_app].name);
+			DrawWrappedText(off_x, off_y+162, 18, 44, gApps[selected_app].short_desc);
+			
+			SetFontSize(28, 32);
+			DrawFormatString(off_x, off_y+384, "CROSS - Enter");
+			DrawFormatString(off_x, off_y+464, "SELECT - About us");
+			
+			if(menu_type==0)
+			{
+				DrawFormatString(off_x, off_y+424, "TRIANGLE - Show Hidden Games");
+			}
+			else
+			{
+				DrawFormatString(off_x, off_y+424, "TRIANGLE - Hide Hidden Games");
+			}
 		}
 		else
 		{
@@ -1083,22 +1111,15 @@ void drawScene()
 			if(gIcons[selected_app].loaded) SetTexture(gIcons[selected_app].icon, gIcons[selected_app].icon_off);
 				else SetTexture(DefaultIcon, DefaultOff);
 			
-			DrawIcon(off_x, off_y, 1, 320, 176, color);
+			DrawIcon(off_x, off_y, 1, 128, 128, color);
 			SetFontSize(28, 32);
-			DrawFormatString(off_x+340, off_y, "%s %s", gApps[selected_app].name, gApps[selected_app].version);
+			DrawFormatString(off_x+148, off_y, "%s %s", gApps[selected_app].name, gApps[selected_app].version);
 			SetFontSize(16, 16);
-			DrawFormatString(off_x+340, 36+off_y, "Developed by: %s", gApps[selected_app].author);
-			DrawWrappedText(off_x+340, 56+off_y, 16, 77, gApps[selected_app].description);
+			DrawFormatString(off_x+148, 36+off_y, "Developed by: %s", gApps[selected_app].author);
+			DrawWrappedText(off_x+148, 56+off_y, 16, 100, gApps[selected_app].description);
 			SetFontSize(28, 32);
-			DrawRect(-66, 333+off_y, 1280, 720, 0, color2);
-			if(file_downloaded) DrawFormatString(off_x, 420+off_y, "X - DOWNLOAD   O - BACK");
-			else
-			{
-				// if(downloading_game == selected_app) DrawFormatString(off_x, 380+off_y, "DOWNLOADING...");
-				// else DrawFormatString(off_x, 380+off_y, "Something else is downloading!");
-				
-				DrawFormatString(off_x, 420+off_y, "O - BACK");
-			}
+			DrawFormatString(off_x, off_y+424, "CIRCLE - Back");
+			if(file_downloaded) DrawFormatString(off_x, off_y+384, "CROSS - Download");
 		}
 		
 		SetFontSize(28, 32);
@@ -1113,14 +1134,13 @@ void drawScene()
 			else display_name = g_download_name;
 			
 			DrawFormatString(off_x, 344+off_y, "Downloading: %s", display_name);
-			DrawFormatString(off_x, 380+off_y, "%llu / %llu bytes (%.1f%%)", (unsigned long long)g_downloaded_bytes,
+			DrawFormatString(off_x, 384+off_y, "%llu / %llu bytes (%.1f%%)", (unsigned long long)g_downloaded_bytes,
 				(unsigned long long)g_download_total, percent);
 		}
 	}
 	
 	SetFontSize(28, 32);
-	DrawRect(-66, -66, 1280, 111, 0, color2);
-	DrawFormatString(-20,0, "%s [%s]", global_name, global_version);
+	DrawFormatString(-20,-4, "%s [%s]", global_name, global_version);
 }
 
 void LoadTexture()
@@ -1164,7 +1184,45 @@ void DemoCompleteCallback(msgButton button, void *usrData)
     sysProcessExit(0);
 }
 
+volatile int icon_thread_running = 0;
+//volatile int icons_ready = 0;
 
+static sys_ppu_thread_t icons_ready;
+static void IconLoaderThread(void *arg)
+{
+    int i;
+
+    for(i = 0; i < gAppCount; i++)
+    {
+        gIcons[i].init = 0;
+
+        printf("Downloading %s...\n", gApps[i].id);
+
+        char path[256];
+        snprintf(path, sizeof(path),
+            "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons/%s.png",
+            gApps[i].id);
+
+        if(http_download(assets_url, gApps[i].icon, path))
+        {
+            printf("Loading icon...\n");
+
+            if(!LoadIconPNG(path,
+                            &gIcons[i].icon,
+                            &gIcons[i].icon_off))
+            {
+                gIcons[i].loaded = 1;
+            }
+
+            gIcons[i].init = 1;
+        }
+    }
+
+    icons_ready = 1;
+    icon_thread_running = 0;
+
+    sysThreadExit(0);
+}
 
 
 
@@ -1184,7 +1242,7 @@ int main(int argc, const char* argv[])
 	mkdir("/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons", 0777);
 	mkdir("/dev_hdd0/packages", 0777);
 
-	snprintf(global_version, sizeof(global_version), "v0.1");
+	snprintf(global_version, sizeof(global_version), "v0.2");
 	
 	sysModuleLoad(SYSMODULE_HTTP);
 	sysModuleLoad(SYSMODULE_NETCTL);
@@ -1229,31 +1287,57 @@ int main(int argc, const char* argv[])
 						PlaySFX(&sfx_decide);
 						menu_selected = 1;
 					}
-					// if(paddata.BTN_LEFT && !oldpad.BTN_LEFT)
-					// {
-						// menu_index = 0;
-						// menu_type--;
-						// if(menu_type<0) menu_type=0;
-						
-						// RefreshVisibleApps();
-					// }
-					// if(paddata.BTN_RIGHT && !oldpad.BTN_RIGHT)
-					// {
-						// menu_index = 0;
-						// menu_type++;
-						// if(menu_type>2) menu_type=2;
-						
-						// RefreshVisibleApps();
-					// }
+					
+					if(paddata.BTN_TRIANGLE && !oldpad.BTN_TRIANGLE)
+					{
+						PlaySFX(&sfx_decide);
+						menu_type = !menu_type;
+						RefreshVisibleApps();
+					}
+					
+					if(paddata.BTN_SELECT && !oldpad.BTN_SELECT)
+					{
+						PlaySFX(&sfx_decide);
+						msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
+							"AcidPS3 Store is an app, that allows users to download homebrew PS3 games, submitted by users (or created within the same organisation). This app does not contain any licensed games whatsoever, and this is not a Piracy Store.",
+							EmptyDialogCallback, NULL, NULL);
+					}
+
+					if(paddata.BTN_LEFT && !oldpad.BTN_LEFT)
+					{
+						if(menu_index % cols != 0)
+						{
+							PlaySFX(&sfx_move);
+							menu_index--;
+						}
+					}
+
+					if(paddata.BTN_RIGHT && !oldpad.BTN_RIGHT)
+					{
+						if((menu_index % cols) != (cols - 1) &&
+						   (menu_index + 1) < visibleCount)
+						{
+							PlaySFX(&sfx_move);
+							menu_index++;
+						}
+					}
+
 					if(paddata.BTN_UP && !oldpad.BTN_UP)
 					{
-						PlaySFX(&sfx_move);
-						if(menu_index>0) menu_index--;
+						if(menu_index >= cols)
+						{
+							PlaySFX(&sfx_move);
+							menu_index -= cols;
+						}
 					}
+
 					if(paddata.BTN_DOWN && !oldpad.BTN_DOWN)
 					{
-						PlaySFX(&sfx_move);
-						if(menu_index < visibleCount - 1) menu_index++;
+						if(menu_index + cols < visibleCount)
+						{
+							PlaySFX(&sfx_move);
+							menu_index += cols;
+						}
 					}
 				}
 				else
@@ -1268,8 +1352,18 @@ int main(int argc, const char* argv[])
 						char dst[256];
 						char pkg[256];
 						
+						if(strcmp(gApps[selected_app].type, "dlc") == 0)
+						{
+							printf("Downloading a DLC");
+							snprintf(pkg, sizeof(pkg), "dlcs/%s", gApps[selected_app].pkg);
+						}
+						else
+						{
+							printf("Downloading a GAME");
+							snprintf(pkg, sizeof(pkg), "games/ps3/%s", gApps[selected_app].pkg);
+						}
+						
 						snprintf(dst, sizeof(dst), "/dev_hdd0/packages/%s.pkg", gApps[selected_app].id);
-						snprintf(pkg, sizeof(pkg), "%s/%s", gApps[selected_app].console, gApps[selected_app].pkg);
 
 						Download_Start(data_url, pkg, dst);
 					}
@@ -1286,33 +1380,9 @@ int main(int argc, const char* argv[])
 		
 		if(manifest_done)
 		{
-			int i = 0;
-			for(i=0; i<gAppCount; i++)
-			{
-				gIcons[i].init = 0;
-				printf("GET ICON...\n");
-				
-				char path[256];
-				snprintf(path, sizeof(path), "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons/%s.png", gApps[i].id);
-				
-				int ret = http_download(assets_url, gApps[i].icon, path);
-				if(ret)
-				{
-					printf("START ICON LOAD...\n");
-					gIcons[i].init = 1;
-				}
-			}
-			
-			for(i=0; i<gAppCount; i++)
-			{
-				char path[256];
-				snprintf(path, sizeof(path), "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons/%s.png", gApps[i].id);
-				
-				if(!LoadIconPNG(path, &gIcons[i].icon, &gIcons[i].icon_off)) gIcons[i].loaded = 1;
-			}
-			
-			RefreshVisibleApps();
+			icon_thread_running = 1;
 			manifest_done = 0;
+			sysThreadCreate(&icons_ready, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
 		}
 		
 		if(store_loaded)
@@ -1324,6 +1394,19 @@ int main(int argc, const char* argv[])
 				check_update=1;
 			}
 			drawScene();
+		}
+		
+		if(icon_thread_running)
+		{
+			RefreshVisibleApps();
+			icon_thread_running = 0;
+		}
+		
+		if(manifest_gather)
+		{
+			manifest_gather = 0;
+			show_screen_idk = 1;
+			sysThreadCreate(&manifest_manage, manifest_parse, NULL, 2000, 0x4000, 0, "manifest_parse");
 		}
 		
 		tiny3d_Flip();

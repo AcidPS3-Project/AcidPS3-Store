@@ -1,3 +1,9 @@
+char global_name[] = "AcidPS3 Store";
+char global_ver[] = "v0.2.2";
+char global_version[16];
+
+int need_update = 0;
+
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
@@ -28,8 +34,9 @@
 #include <freetype/ftglyph.h>
 
 #include "asimov_ttf_bin.h"
+#include <inttypes.h>
 
-char data_url[] = "https://github.com/AcidPS3-Project/AcidPS3Data/raw/refs/heads/main/";
+char data_url[] = "https://";
 char assets_url[] = "http://acidnt31.w10.site/assets/store/";
 
 #define HTTP_YES		1
@@ -60,8 +67,6 @@ volatile int g_download_result = 0;
 char g_download_name[256];
 
 char manifestVersion[16];
-char global_name[] = "AcidPS3 Store";
-char global_version[16];
 int check_update = 1;
 int show_screen_idk = 0;
 
@@ -326,14 +331,24 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 		goto end;
 	}
 	
-	while(nRecv != 0)
+	int recvRet;
+
+	while(1)
 	{
-		if(httpRecvResponse(httpTrans, (void*) getBuffer, sizeof(getBuffer)-1, &nRecv) > 0) break;
+		recvRet = httpRecvResponse(httpTrans, getBuffer, sizeof(getBuffer), &nRecv);
+		if(recvRet < 0)
+		{
+			printf("httpRecvResponse failed: %08X\n", recvRet);
+			ret = HTTP_FAILED;
+			goto end;
+		}
 		if(nRecv == 0) break;
-		fwrite((char*) getBuffer, 1, nRecv, fp);
+		fwrite(getBuffer, 1, nRecv, fp);
 		g_downloaded_bytes += nRecv;
+
 		if(cancel) break;
 	}
+	
 	fclose(fp);
 	
 	if(cancel) {
@@ -346,7 +361,15 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 	}
 
 	//END of TRANSFER
-	ret=1;
+	if(length > 0 && g_downloaded_bytes != length)
+	{
+		printf("Incomplete download!\n");
+		printf("%" PRIu64 " / %" PRIu64 "\n", g_downloaded_bytes, length);
+
+		ret = HTTP_FAILED;
+	}
+	else ret = HTTP_SUCCESS;
+	
 	g_download_result = 1;
 	g_download_finished = 1;
 	g_download_active = 0;
@@ -498,6 +521,12 @@ static void manifest_parse(void *arg)
 {
 	int i = 0;
 	FILE *fp = fopen(manifest_path, "rb");
+	
+	if(!fp)
+	{
+		printf("Couldn't open manifest\n");
+		sysThreadExit(0);
+	}
 
 	fseek(fp, 0, SEEK_END);
 	long size = ftell(fp);
@@ -533,20 +562,48 @@ static void manifest_parse(void *arg)
 			
 			cJSON *app = cJSON_GetArrayItem(apps,i);
 
-			strcpy(gApps[i].id, cJSON_GetObjectItem(app,"id")->valuestring);
-			strcpy(gApps[i].name, cJSON_GetObjectItem(app,"name")->valuestring);
-			strcpy(gApps[i].author, cJSON_GetObjectItem(app,"author")->valuestring);
-			strcpy(gApps[i].version, cJSON_GetObjectItem(app,"version")->valuestring);
+			cJSON *item = cJSON_GetObjectItem(app,"id");
+			if(item && item->valuestring) strcpy(gApps[i].id,item->valuestring);
+			else strcpy(gApps[i].id,"id404");
 			
-			strcpy(gApps[i].type, cJSON_GetObjectItem(app,"type")->valuestring);
+			item = cJSON_GetObjectItem(app,"name");
+			if(item && item->valuestring) strcpy(gApps[i].name,item->valuestring);
+			else strcpy(gApps[i].name,"Undefined");
 			
-			strcpy(gApps[i].pkg, cJSON_GetObjectItem(app,"pkg")->valuestring);
-			strcpy(gApps[i].icon, cJSON_GetObjectItem(app,"icon")->valuestring);
+			item = cJSON_GetObjectItem(app,"author");
+			if(item && item->valuestring) strcpy(gApps[i].author,item->valuestring);
+			else strcpy(gApps[i].author,"Unknown");
 			
-			strcpy(gApps[i].hidden_game, cJSON_GetObjectItem(app,"hidden")->valuestring);
+			item = cJSON_GetObjectItem(app,"version");
+			if(item && item->valuestring) strcpy(gApps[i].version,item->valuestring);
+			else strcpy(gApps[i].version,"Undetermined");
 			
-			strcpy(gApps[i].description, cJSON_GetObjectItem(app,"description")->valuestring);
-			strcpy(gApps[i].short_desc, cJSON_GetObjectItem(app,"short_desc")->valuestring);
+			item = cJSON_GetObjectItem(app,"type");
+			if(item && item->valuestring) strcpy(gApps[i].type,item->valuestring);
+			else strcpy(gApps[i].type,"game");
+			
+			item = cJSON_GetObjectItem(app,"pkg");
+			if(item && item->valuestring) strcpy(gApps[i].pkg,item->valuestring);
+			else strcpy(gApps[i].pkg,"404.pkg");
+			
+			item = cJSON_GetObjectItem(app,"icon");
+			if(item && item->valuestring) strcpy(gApps[i].icon,item->valuestring);
+			else strcpy(gApps[i].icon,"icons/placeholder.png");
+			
+			item = cJSON_GetObjectItem(app,"hidden");
+			if(item && item->valuestring) strcpy(gApps[i].hidden_game,item->valuestring);
+			else strcpy(gApps[i].hidden_game,"yes");
+			
+			item = cJSON_GetObjectItem(app,"description");
+			if(item && item->valuestring)
+				snprintf(gApps[i].description, sizeof(gApps[i].description), "%s", item->valuestring);
+			else snprintf(gApps[i].description, sizeof(gApps[i].description), "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur dui nisl, volutpat maximus libero a, bibendum dignissim arcu. Sed sit amet finibus dolor. Fusce maximus, velit at pellentesque laoreet, tellus nulla sodales nisi, non porttitor dolor massa eget dui. Morbi dictum massa sit amet ex porttitor tincidunt. Nullam tempor lacus quis mauris tristique, non pellentesque magna luctus. Suspendisse urna neque, pulvinar a dignissim sed, venenatis tempus massa. Aliquam pretium purus nec odio ullamcorper viverra. Praesent sed ornare lacus.");
+			
+			item = cJSON_GetObjectItem(app,"short_desc");
+			if(item && item->valuestring)
+				snprintf(gApps[i].short_desc, sizeof(gApps[i].short_desc), "%s", item->valuestring);
+			else snprintf(gApps[i].short_desc, sizeof(gApps[i].short_desc), "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur dui nisl, volutpat maximus libero a, bibendum dignissim arcu. Sed sit amet finibus dolor.");
+			
 			printf("GAME NAME: %s; ID: %s\n", gApps[i].name, gApps[i].id);
 		}
 		
@@ -554,9 +611,9 @@ static void manifest_parse(void *arg)
 		free(json);
 	}
 	
-	
 	check_update=0;
 	manifest_done = 1;
+	
     sysThreadExit(0);
 }
 
@@ -572,9 +629,10 @@ void EmptyDialogCallback(msgButton button, void *usrData)
 
 
 
+volatile int show_download_dialog = 0;
+volatile int download_success = 0;
 
-
-
+volatile int download_finished = 0;
 static sys_ppu_thread_t download_thread;
 
 static void DownloadThread(void *arg)
@@ -584,24 +642,22 @@ static void DownloadThread(void *arg)
 	
 	if(ret)
 	{
+		printf("Something downloaded\n");
 		if(!manifest_gather)
 		{
-			manifest_gather=1;
-		}
-		else
-		{
-			msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
-				"Download completed. Check the /dev_hdd0/packages/ folder.", EmptyDialogCallback, NULL, NULL);
+			printf("download of pkg completed!\n");
 		}
 	}
 	else
 	{
-		msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
-			"Failed.", EmptyDialogCallback, NULL, NULL);
+		printf("failed to download\n");
 	}
+	
+    download_success = ret ? 1 : 0;
+    show_download_dialog = 1;
+	
 	file_downloaded=1;
-
-	download_thread = 0;
+	download_finished = 1;
 	sysThreadExit(0);
 }
 
@@ -613,34 +669,16 @@ int Download_Start(const char *url, const char *file, const char *dest)
 	snprintf(download_file, sizeof(download_file), "%s", file);
 	snprintf(download_dest, sizeof(download_dest), "%s", dest);
 
-    return sysThreadCreate(&download_thread, DownloadThread, NULL, 1000, 0x4000, 0, "DownloadThread");
+    int ret = sysThreadCreate(&download_thread, DownloadThread, NULL, 1000, 0x4000, 0, "DownloadThread");
+	printf("Create ret=%08X thread=%llu\n", ret, (unsigned long long)download_thread);
+	
+	return 0;
 }
 
-void UpdatePromptCallback(msgButton button, void *usrData)
+void UpdateNOW()
 {
-    switch(button)
-    {
-        case MSG_DIALOG_BTN_YES:
-        {
-            printf("User accepted update\n");
-            char data_url[] = "https://github.com/AcidPS3-Project/AcidPS3Data/raw/refs/heads/main/";
-
-            char zpath[256];
-            char dpath[256];
-			snprintf(zpath, sizeof(zpath), "/dev_hdd0/packages/acidps3-store-%s.pkg", manifestVersion);
-			snprintf(dpath, sizeof(dpath), "acidps3-store-%s.pkg", manifestVersion);
-			
-            Download_Start(data_url, dpath, zpath);
-
-            break;
-        }
-
-        case MSG_DIALOG_BTN_NO:
-        case MSG_DIALOG_BTN_ESCAPE:
-        default:
-            printf("User declined update\n");
-            break;
-    }
+	char dpath[] = "github.com/AcidPS3-Project/AcidPS3Data/releases/download/AcidPS3Store/acidps3-store-latest.pkg";
+	Download_Start(data_url, dpath, "/dev_hdd0/packages/acidps3-store-latest.pkg");
 }
 
 
@@ -1050,6 +1088,31 @@ void drawScene()
 		DrawFormatString(off_x, 64, "Collecting data from our server...");
 		DrawFormatString(off_x, 96, "It won't take long.");
 	}
+	else if(need_update)
+	{
+		DrawFormatString(off_x, 96, "Warning!");
+		DrawFormatString(off_x, 160, "AcidPS3 Store found a new %s update.", manifestVersion);
+		DrawFormatString(off_x, 192, "It needs to be installed right now!!");
+		DrawFormatString(off_x, 256, "If it finishes downloading, install it in this path:");
+		DrawFormatString(off_x, 288, "/dev_hdd0/packages/");
+		DrawFormatString(off_x, 352, "Thanks for understanding.");
+		
+		if(!file_downloaded)
+		{
+			SetFontSize(28, 32);
+			float percent = 0.0f;
+			if(g_download_total > 0) percent = (float)g_downloaded_bytes * 100.0f / (float)g_download_total;
+			
+			const char *display_name = strrchr(g_download_name, '/');
+			if(display_name) display_name++;
+			else display_name = g_download_name;
+			
+			DrawFormatString(off_x, 344+off_y, "Downloading the update...", display_name);
+			DrawFormatString(off_x, 384+off_y, "%llu / %llu bytes (%.1f%%)", (unsigned long long)g_downloaded_bytes,
+				(unsigned long long)g_download_total, percent);
+		}
+		else DrawFormatString(off_x, 344+off_y, "CROSS - Retry again");
+	}
 	else
 	{
 		if(!menu_selected)
@@ -1166,17 +1229,6 @@ void LoadTexture()
 
 
 
-void ShowUpdatePrompt()
-{
-	char msg[1024];
-	snprintf(msg, sizeof(msg), "A new update (%s) is here!\n\n"
-		"Do you want to install the update?\n"
-		"( pls install this update :> )", manifestVersion);
-
-	msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_YESNO | MSG_DIALOG_DISABLE_CANCEL_ON,
-		msg, UpdatePromptCallback, NULL, NULL);
-}
-
 
 
 void DemoCompleteCallback(msgButton button, void *usrData)
@@ -1185,9 +1237,9 @@ void DemoCompleteCallback(msgButton button, void *usrData)
 }
 
 volatile int icon_thread_running = 0;
-//volatile int icons_ready = 0;
+static sys_ppu_thread_t icon_thread;
+volatile int icons_ready = 0;
 
-static sys_ppu_thread_t icons_ready;
 static void IconLoaderThread(void *arg)
 {
     int i;
@@ -1203,7 +1255,8 @@ static void IconLoaderThread(void *arg)
             "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons/%s.png",
             gApps[i].id);
 
-        if(http_download(assets_url, gApps[i].icon, path))
+        int ret = http_download(assets_url, gApps[i].icon, path);
+		if(ret)
         {
             printf("Loading icon...\n");
 
@@ -1241,8 +1294,8 @@ int main(int argc, const char* argv[])
 	mkdir("/dev_hdd0/game/ACIDSTORE/USRDIR/cache", 0777);
 	mkdir("/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons", 0777);
 	mkdir("/dev_hdd0/packages", 0777);
-
-	snprintf(global_version, sizeof(global_version), "v0.2");
+	
+	snprintf(global_version, sizeof(global_version), global_ver);
 	
 	sysModuleLoad(SYSMODULE_HTTP);
 	sysModuleLoad(SYSMODULE_NETCTL);
@@ -1276,9 +1329,22 @@ int main(int argc, const char* argv[])
 		
 		for(i = 0; i < MAX_PADS; i++){
 
-			if(padinfo.status[i]){
+			if(padinfo.status[i])
+			{
 				ioPadGetData(i, &paddata);
-									
+				
+				if(need_update)
+				{
+					if(paddata.BTN_CROSS && !oldpad.BTN_CROSS && file_downloaded)
+					{
+						file_downloaded = 0;
+						UpdateNOW();
+					}
+					
+					oldpad = paddata;
+					continue;
+				}
+				
 				// basic
 				if(!menu_selected)
 				{
@@ -1350,22 +1416,10 @@ int main(int argc, const char* argv[])
 						downloading_game = selected_app;
 						
 						char dst[256];
-						char pkg[256];
-						
-						if(strcmp(gApps[selected_app].type, "dlc") == 0)
-						{
-							printf("Downloading a DLC");
-							snprintf(pkg, sizeof(pkg), "dlcs/%s", gApps[selected_app].pkg);
-						}
-						else
-						{
-							printf("Downloading a GAME");
-							snprintf(pkg, sizeof(pkg), "games/ps3/%s", gApps[selected_app].pkg);
-						}
 						
 						snprintf(dst, sizeof(dst), "/dev_hdd0/packages/%s.pkg", gApps[selected_app].id);
 
-						Download_Start(data_url, pkg, dst);
+						Download_Start(data_url, gApps[selected_app].pkg, dst);
 					}
 					if(paddata.BTN_CIRCLE && !oldpad.BTN_CIRCLE)
 					{
@@ -1378,35 +1432,77 @@ int main(int argc, const char* argv[])
 			}
 		}
 		
-		if(manifest_done)
-		{
-			icon_thread_running = 1;
-			manifest_done = 0;
-			sysThreadCreate(&icons_ready, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
-		}
-		
 		if(store_loaded)
 		{
 			if(!check_update)
 			{
 				printf("have: %s, available: %s\n", global_version, manifestVersion);
-				if(strcmp(manifestVersion, global_version) != 0) ShowUpdatePrompt();
+				if(strcmp(manifestVersion, global_version) != 0)
+				{
+					UpdateNOW();
+					need_update = 1;
+				}
 				check_update=1;
 			}
 			drawScene();
 		}
 		
-		if(icon_thread_running)
+		if(manifest_done && check_update && !need_update)
 		{
-			RefreshVisibleApps();
-			icon_thread_running = 0;
+			icon_thread_running = 1;
+			manifest_done = 0;
+			sysThreadCreate(&icon_thread, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
 		}
 		
-		if(manifest_gather)
+		if(icons_ready)
 		{
-			manifest_gather = 0;
+			icons_ready = 0;
+			RefreshVisibleApps();
+		}
+		
+		if(!manifest_gather)
+		{
+			manifest_gather = 1;
 			show_screen_idk = 1;
 			sysThreadCreate(&manifest_manage, manifest_parse, NULL, 2000, 0x4000, 0, "manifest_parse");
+		}
+		
+		uint64_t exit_code;
+
+		if(download_finished)
+		{
+			download_finished = 0;
+			download_thread = 0;
+			printf("download_thread finished\n");
+			
+			if(show_download_dialog)
+			{
+				show_download_dialog = 0;
+
+				if(download_success)
+				{
+					if(need_update)
+					{
+						msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
+							"Update downloaded.\nInstall it from /dev_hdd0/packages/.", EmptyDialogCallback, NULL, NULL);
+					}
+					else
+					{
+						msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
+							"Download completed.\nCheck /dev_hdd0/packages/.", EmptyDialogCallback, NULL, NULL);
+					}
+				}
+				else
+				{
+					msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
+						"Download failed.", EmptyDialogCallback, NULL, NULL);
+				}
+			}
+		}
+		
+		if(icon_thread)
+		{
+			if(sysThreadJoin(icon_thread, &exit_code) == 0) icon_thread = 0;
 		}
 		
 		tiny3d_Flip();

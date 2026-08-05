@@ -1,5 +1,5 @@
 char global_name[] = "AcidPS3 Store";
-char global_ver[] = "v0.2.2";
+char global_ver[] = "v0.2.3";
 char global_version[16];
 
 int need_update = 0;
@@ -69,6 +69,12 @@ char g_download_name[256];
 char manifestVersion[16];
 int check_update = 1;
 int show_screen_idk = 0;
+
+volatile int download_kind = 0;
+
+#define DOWNLOAD_MANIFEST 0
+#define DOWNLOAD_GAME     1
+#define DOWNLOAD_UPDATE   2
 
 int http_init(void)
 {
@@ -263,8 +269,8 @@ int http_download(const char* url, const char* filename, const char* local_dst)
     httpClientSetAutoRedirect(httpClient, 1);
 
 	// Escape URL file name characters
-	escaped_name = escape_filename(filename);
-	asprintf(&escaped_url, "%s%s", url, escaped_name);
+	//escaped_name = escape_filename(filename);
+	asprintf(&escaped_url, "%s%s", url, filename);
 	
 	printf("Downloading (%s) -> (%s)\n", escaped_url, local_dst);
 
@@ -370,7 +376,7 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 	}
 	else ret = HTTP_SUCCESS;
 	
-	g_download_result = 1;
+	g_download_result = ret;
 	g_download_finished = 1;
 	g_download_active = 0;
 
@@ -654,7 +660,8 @@ static void DownloadThread(void *arg)
 	}
 	
     download_success = ret ? 1 : 0;
-    show_download_dialog = 1;
+	
+    if(download_kind != DOWNLOAD_MANIFEST) show_download_dialog = 1;
 	
 	file_downloaded=1;
 	download_finished = 1;
@@ -679,6 +686,7 @@ void UpdateNOW()
 {
 	char dpath[] = "github.com/AcidPS3-Project/AcidPS3Data/releases/download/AcidPS3Store/acidps3-store-latest.pkg";
 	Download_Start(data_url, dpath, "/dev_hdd0/packages/acidps3-store-latest.pkg");
+	download_kind = DOWNLOAD_UPDATE;
 }
 
 
@@ -1314,6 +1322,7 @@ int main(int argc, const char* argv[])
 	printf("received call to get manifest..\n");
 	
 	Download_Start(assets_url, "manifest.json", manifest_path);
+	download_kind = DOWNLOAD_MANIFEST;
 	
     while(1)
     {
@@ -1420,6 +1429,7 @@ int main(int argc, const char* argv[])
 						snprintf(dst, sizeof(dst), "/dev_hdd0/packages/%s.pkg", gApps[selected_app].id);
 
 						Download_Start(data_url, gApps[selected_app].pkg, dst);
+						download_kind = DOWNLOAD_GAME;
 					}
 					if(paddata.BTN_CIRCLE && !oldpad.BTN_CIRCLE)
 					{

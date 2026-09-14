@@ -16,6 +16,7 @@ CONTENTID	:=	HP0031-$(APPID)_00-ACIDPS3STORE0000
 
 SFOXML		:=	param/sfo.xml
 ICON0       :=  param/ICON0.PNG
+PKGFILES	:=	files
 
 include $(PSL1GHT)/ppu_rules
 
@@ -132,7 +133,7 @@ $(BUILD):
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).self EBOOT.BIN
+	@rm -fr $(BUILD) $(OUTPUT).elf $(OUTPUT).self $(OUTPUT).fake.self $(OUTPUT).pkg $(OUTPUT).gnpdrm.pkg EBOOT.BIN
 
 #---------------------------------------------------------------------------------
 run:

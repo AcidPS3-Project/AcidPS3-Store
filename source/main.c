@@ -1,5 +1,5 @@
 char global_name[] = "AcidPS3 Store";
-char global_ver[] = "v0.2.3";
+char global_ver[] = "v0.2.4";
 char global_version[16];
 
 int need_update = 0;
@@ -270,7 +270,12 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 
 	// Escape URL file name characters
 	//escaped_name = escape_filename(filename);
-	asprintf(&escaped_url, "%s%s", url, filename);
+	if(asprintf(&escaped_url, "%s%s", url, filename) < 0 || escaped_url == NULL)
+	{
+		printf("Failed to allocate URL\n");
+		ret = HTTP_FAILED;
+		goto end;
+	}
 	
 	printf("Downloading (%s) -> (%s)\n", escaped_url, local_dst);
 
@@ -314,6 +319,7 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 	
 	//GET SIZE
 	httpResponseGetContentLength(httpTrans, &length);
+	printf("HTTP length: %llu\n", (unsigned long long)length);
 	g_download_total = length;
 
 	ret = httpResponseGetStatusCode(httpTrans, &httpCode);
@@ -323,7 +329,8 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 		goto end;
 	}
 
-	if(httpCode != HTTP_STATUS_CODE_OK && httpCode >= 400 ) {
+	if(httpCode != HTTP_STATUS_CODE_OK)
+	{
 		printf("Error : Status code (%d)\n", httpCode);
 		ret=HTTP_FAILED;
 		goto end;
@@ -348,16 +355,34 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 			ret = HTTP_FAILED;
 			goto end;
 		}
+		
 		if(nRecv == 0) break;
-		fwrite(getBuffer, 1, nRecv, fp);
-		g_downloaded_bytes += nRecv;
+		
+		size_t written = fwrite(getBuffer, 1, nRecv, fp);
+
+		if(written != nRecv)
+		{
+			printf("fwrite failed: wrote %u / %u bytes\n", (unsigned)written, (unsigned)nRecv);
+			ret = HTTP_FAILED;
+			goto end;
+		}
+
+		g_downloaded_bytes += written;
 
 		if(cancel) break;
 	}
 	
-	fclose(fp);
+	if(fp)
+	{
+		fclose(fp);
+		fp = NULL;
+	}
 	
-	if(cancel) {
+	printf("Downloaded:  %llu\n", (unsigned long long)g_downloaded_bytes);
+	printf("Difference:  %lld\n", (long long)g_downloaded_bytes - (long long)length);
+	
+	if(cancel)
+	{
 		unlink((char*)local_dst);
 		ret=HTTP_FAILED;
 		cancel=0;
@@ -366,15 +391,24 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 		g_download_active = 0;
 	}
 
-	//END of TRANSFER
-	if(length > 0 && g_downloaded_bytes != length)
-	{
-		printf("Incomplete download!\n");
-		printf("%" PRIu64 " / %" PRIu64 "\n", g_downloaded_bytes, length);
+	struct stat st;
 
-		ret = HTTP_FAILED;
+	if(stat(local_dst, &st) == 0)
+	{
+		printf("Actual file size: %lld\n", (long long)st.st_size);
 	}
-	else ret = HTTP_SUCCESS;
+	
+	//END of TRANSFER
+	// if(length > 0 && g_downloaded_bytes != length)
+	// {
+		// printf("Incomplete download!\n");
+		// printf("%" PRIu64 " / %" PRIu64 "\n", g_downloaded_bytes, length);
+
+		// ret = HTTP_FAILED;
+	// }
+	// else ret = HTTP_SUCCESS;
+	
+	ret = HTTP_SUCCESS;
 	
 	g_download_result = ret;
 	g_download_finished = 1;
@@ -382,26 +416,27 @@ int http_download(const char* url, const char* filename, const char* local_dst)
 
 	end:
 	{
-		g_download_result = ret;
-		g_download_finished = 1;
-		g_download_active = 0;
+		if(fp)
+		{
+			fclose(fp);
+			fp = NULL;
+		}
+		
+		if(ret != HTTP_SUCCESS) unlink(local_dst);
+		
 		if(httpTrans) httpDestroyTransaction(httpTrans);
 		if(httpClient) httpDestroyClient(httpClient);
 		if(uri_pool) free(uri_pool);
 		if(escaped_url) free(escaped_url);
 		if(escaped_name) free(escaped_name);
+		
+		g_download_result = ret;
+		g_download_finished = 1;
+		g_download_active = 0;
 
 		return ret;
 	}
 }
-
-
-
-
-
-
-
-
 
 #include "soundlib/spu_soundlib.h"
 #include "soundlib/audioplayer.h"
@@ -455,12 +490,37 @@ int LoadIconPNG(const char *path, pngData *tex, u32 *icon_off)
 
 		void *buf = memalign(128, size);
 
-		fread(buf, 1, size, fp);
+		if(!buf)
+		{
+			fclose(fp);
+			return 1;
+		}
+
+		if(fread(buf, 1, size, fp) != size)
+		{
+			free(buf);
+			fclose(fp);
+			return 1;
+		}
+
 		fclose(fp);
 
-		pngLoadFromBuffer(buf, size, tex);
-		
+		if(pngLoadFromBuffer(buf, size, tex) != 0)
+		{
+			free(buf);
+			return 1;
+		}
+
 		u32 *texture = tiny3d_AllocTexture(tex->pitch * tex->height);
+
+		if(!texture)
+		{
+			free(tex->bmp_out);
+			tex->bmp_out = NULL;
+			free(buf);
+			return 1;
+		}
+		
 		memcpy(texture, tex->bmp_out, tex->pitch * tex->height);
 		
 		*icon_off = tiny3d_TextureOffset(texture);
@@ -1336,8 +1396,8 @@ int main(int argc, const char* argv[])
             TINY3D_BLEND_RGB_FUNC_ADD | TINY3D_BLEND_ALPHA_FUNC_ADD);
 		ioPadGetInfo(&padinfo);
 		
-		for(i = 0; i < MAX_PADS; i++){
-
+		for(i = 0; i < MAX_PADS; i++)
+		{
 			if(padinfo.status[i])
 			{
 				ioPadGetData(i, &paddata);
@@ -1461,6 +1521,7 @@ int main(int argc, const char* argv[])
 		{
 			icon_thread_running = 1;
 			manifest_done = 0;
+			RefreshVisibleApps();
 			sysThreadCreate(&icon_thread, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
 		}
 		

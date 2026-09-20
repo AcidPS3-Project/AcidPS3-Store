@@ -1,5 +1,5 @@
 char global_name[] = "AcidPS3 Store";
-char global_ver[] = "v0.2.4";
+char global_ver[] = "v0.2.5";
 char global_version[16];
 
 int need_update = 0;
@@ -36,7 +36,7 @@ int need_update = 0;
 #include "asimov_ttf_bin.h"
 #include <inttypes.h>
 
-char data_url[] = "https://";
+char data_url[] = "http://";
 char assets_url[] = "http://acidnt31.w10.site/assets/store/";
 
 #define HTTP_YES		1
@@ -67,7 +67,6 @@ volatile int g_download_result = 0;
 char g_download_name[256];
 
 char manifestVersion[16];
-int check_update = 1;
 int show_screen_idk = 0;
 
 volatile int download_kind = 0;
@@ -457,7 +456,6 @@ float lerp(float min, float max, float ratio)
 
 
 int ttf_inited = 0;
-int store_loaded = 0;
 int menu_selected = 0;
 int menu_type = 0;
 int menu_index = 0;
@@ -677,7 +675,6 @@ static void manifest_parse(void *arg)
 		free(json);
 	}
 	
-	check_update=0;
 	manifest_done = 1;
 	
     sysThreadExit(0);
@@ -744,8 +741,9 @@ int Download_Start(const char *url, const char *file, const char *dest)
 
 void UpdateNOW()
 {
-	char dpath[] = "github.com/AcidPS3-Project/AcidPS3Data/releases/download/AcidPS3Store/acidps3-store-latest.pkg";
-	Download_Start(data_url, dpath, "/dev_hdd0/packages/acidps3-store-latest.pkg");
+	char dpath[256];
+	snprintf(dpath, sizeof(dpath), "archive.org/download/AcidPS3_Store_Data/AcidPS3_Ver/store_%s.pkg", global_ver);
+	Download_Start(data_url, dpath, "/dev_hdd0/packages/AcidPS3_Store.pkg");
 	download_kind = DOWNLOAD_UPDATE;
 }
 
@@ -1377,7 +1375,6 @@ int main(int argc, const char* argv[])
 	
 	http_init();
 	
-	store_loaded = 1;
     PlayBGM();
 	printf("received call to get manifest..\n");
 	
@@ -1502,40 +1499,31 @@ int main(int argc, const char* argv[])
 			}
 		}
 		
-		if(store_loaded)
-		{
-			if(!check_update)
-			{
-				printf("have: %s, available: %s\n", global_version, manifestVersion);
-				if(strcmp(manifestVersion, global_version) != 0)
-				{
-					UpdateNOW();
-					need_update = 1;
-				}
-				check_update=1;
-			}
-			drawScene();
-		}
+		drawScene();
 		
-		if(manifest_done && check_update && !need_update)
+		if(manifest_done)
 		{
-			icon_thread_running = 1;
 			manifest_done = 0;
-			RefreshVisibleApps();
-			sysThreadCreate(&icon_thread, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
+
+			printf("have: %s, available: %s\n", global_version, manifestVersion);
+			if(strcmp(manifestVersion, global_version) != 0)
+			{
+				UpdateNOW();
+				need_update = 1;
+			}
+
+			if(!need_update)
+			{
+				icon_thread_running = 1;
+				RefreshVisibleApps();
+				sysThreadCreate(&icon_thread, IconLoaderThread, NULL, 2000, 0x4000, 0, "IconLoaderThread");
+			}
 		}
 		
 		if(icons_ready)
 		{
 			icons_ready = 0;
 			RefreshVisibleApps();
-		}
-		
-		if(!manifest_gather)
-		{
-			manifest_gather = 1;
-			show_screen_idk = 1;
-			sysThreadCreate(&manifest_manage, manifest_parse, NULL, 2000, 0x4000, 0, "manifest_parse");
 		}
 		
 		uint64_t exit_code;
@@ -1546,6 +1534,21 @@ int main(int argc, const char* argv[])
 			download_thread = 0;
 			printf("download_thread finished\n");
 			
+			if(download_kind == DOWNLOAD_MANIFEST)
+			{
+				if(download_success)
+				{
+					show_screen_idk = 1;
+				    printf("Manifest downloaded successfully. Parsing now...\n");
+				    sysThreadCreate(&manifest_manage, manifest_parse, NULL, 2000, 0x4000, 0, "manifest_parse");
+				}
+				else
+				{
+					msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
+						"Manifest failed to downlad. It may happened when you are either not connected to the internet, or the server is experienting problems. Try again later.", EmptyDialogCallback, NULL, NULL);
+				}
+			}
+
 			if(show_download_dialog)
 			{
 				show_download_dialog = 0;
@@ -1566,7 +1569,7 @@ int main(int argc, const char* argv[])
 				else
 				{
 					msgDialogOpen2(MSG_DIALOG_NORMAL | MSG_DIALOG_BTN_TYPE_OK | MSG_DIALOG_DISABLE_CANCEL_ON,
-						"Download failed.", EmptyDialogCallback, NULL, NULL);
+						"Download failed. It may happened when you are either not connected to the internet, or the server is experienting problems. Try again later.", EmptyDialogCallback, NULL, NULL);
 				}
 			}
 		}

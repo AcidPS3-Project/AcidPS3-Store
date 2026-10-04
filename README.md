@@ -17,3 +17,4 @@ You need a machine running Linux. WSL is supported.
 
 # Additional Notes
 * The homebrew's code is partially AI-Assisted.
+* This project uses [cJSON](https://github.com/davegamble/cjson). License file can be found [here](CJSON_LICENSE).

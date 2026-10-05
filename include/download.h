@@ -12,17 +12,11 @@
 
 #define HTTP_USER_AGENT "Mozilla/5.0 (PLAYSTATION 3; 1.00)"
 
+#define CA_CERT_PATH "/dev_hdd0/game/ACIDSTORE/USRDIR/data/cacert.pem"
+
 #define DOWNLOAD_MANIFEST 0
 #define DOWNLOAD_GAME     1
 #define DOWNLOAD_UPDATE   2
-
-typedef struct
-{
-    void* http_pool;
-    void* ssl_pool;
-    httpsData* caList;
-    void* cert_buffer;
-} t_http_pools;
 
 char g_download_name[256];
 char manifestVersion[16];
@@ -72,7 +66,6 @@ typedef struct
 IconCache gIcons[MAX_APPS];
 
 extern sys_ppu_thread_t manifest_manage;
-extern t_http_pools http_pools;
 extern sys_ppu_thread_t download_thread;
 extern sys_ppu_thread_t icon_thread;
 

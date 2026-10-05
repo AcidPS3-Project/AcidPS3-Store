@@ -17,7 +17,6 @@ volatile int g_download_finished = 0;
 volatile int g_download_result = 0;
 
 sys_ppu_thread_t manifest_manage;
-t_http_pools http_pools;
 sys_ppu_thread_t download_thread;
 sys_ppu_thread_t icon_thread;
 
@@ -28,7 +27,7 @@ char download_file[256];
 char download_dest[256];
 
 char manifest_path[] = "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/manifest.json";
-char data_url[] = "http://";
+char data_url[] = "https://";
 char assets_url[] = "http://acidnt31.w10.site/assets/store/";
 
 volatile int show_download_dialog = 0;
@@ -40,155 +39,28 @@ volatile int icons_ready = 0;
 
 volatile int download_kind = 0;
 
-int http_init()
+int http_init(void)
 {
-    int ret;
-	u32 cert_size=0;
-	u8 module_https_loaded=0;
-	u8 module_http_loaded=0;
-	u8 module_net_loaded=0;
-	u8 module_ssl_loaded=0;
-	
-	u8 https_init=0;
-	u8 http_init=0;
-	u8 net_init=0;
-	u8 ssl_init=0;
+    CURLcode ret;
 
-	//init
-	ret = sysModuleLoad(SYSMODULE_NET);
-	if (ret < 0) {
-		printf("Error : sysModuleLoad(SYSMODULE_NET) HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else module_net_loaded=HTTP_YES;
+    ret = curl_global_init(CURL_GLOBAL_DEFAULT);
+    
+    curl_version_info_data *vi = curl_version_info(CURLVERSION_NOW);
 
-	ret = netInitialize();
-	if (ret < 0) {
-		printf("Error : netInitialize HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else net_init=HTTP_YES;
+	printf("SSL: %s\n", vi->ssl_version);
 
-	ret = sysModuleLoad(SYSMODULE_HTTP);
-	if (ret < 0) {
-		printf("Error : sysModuleLoad(SYSMODULE_HTTP) HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else module_http_loaded=HTTP_YES;
+    if(ret != CURLE_OK)
+    {
+        printf("curl_global_init failed: %s\n", curl_easy_strerror(ret));
+        return HTTP_FAILED;
+    }
 
-	http_pools.http_pool = malloc(0x10000);
-	if (http_pools.http_pool == NULL) {
-		printf("Error : out of memory (http_pool)\n");
-		ret=HTTP_FAILED;
-		goto end;
-	}
-
-	ret = httpInit(http_pools.http_pool, 0x10000);
-	if (ret < 0) {
-		printf("Error : httpInit HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else http_init=HTTP_YES;
-
-	ret = sysModuleLoad(SYSMODULE_HTTPS);
-	if (ret < 0) {
-		printf("Error : sysModuleLoad(SYSMODULE_HTTP) HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else module_https_loaded=HTTP_YES;
-
-	ret = sysModuleLoad(SYSMODULE_SSL);
-	if (ret < 0) {
-		printf("Error : sysModuleLoad(SYSMODULE_HTTP) HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else module_ssl_loaded=HTTP_YES;
-
-	http_pools.ssl_pool = malloc(0x40000);
-	if (http_pools.ssl_pool == NULL) {
-		printf("Error : out of memory (ssl_pool)\n");
-		ret=HTTP_FAILED;
-		goto end;
-	}
-
-	ret = sslInit(http_pools.ssl_pool, 0x40000);
-	if (ret < 0) {
-		printf("Error : sslInit HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else ssl_init=HTTP_YES;
-
-	http_pools.caList = (httpsData *)malloc(sizeof(httpsData));
-	ret = sslCertificateLoader(SSL_LOAD_CERT_ALL, NULL, 0, &cert_size);
-	if (ret < 0) {
-		printf("Error : sslCertificateLoader HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-
-	http_pools.cert_buffer = malloc(cert_size);
-	if (http_pools.cert_buffer==NULL) {
-		printf("Error : out of memory (cert_buffer)\n");
-		ret=HTTP_FAILED;
-		goto end;
-	}
-
-	ret = sslCertificateLoader(SSL_LOAD_CERT_ALL, http_pools.cert_buffer, cert_size, NULL);
-	if (ret < 0) {
-		printf("Error : sslCertificateLoader HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-
-	(&http_pools.caList[0])->ptr = http_pools.cert_buffer;
-	(&http_pools.caList[0])->size = cert_size;
-
-	ret = httpsInit(1, (httpsData *) http_pools.caList);
-	if (ret < 0) {
-		printf("Error : httpsInit HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	} else https_init=HTTP_YES;
-
-	return HTTP_SUCCESS;
-
-end:
-	if(http_pools.caList) free(http_pools.caList);
-	if(https_init) httpsEnd();
-	if(ssl_init) sslEnd();
-	if(http_init) httpEnd();
-	if(net_init) netDeinitialize();
-	
-	if(module_http_loaded) sysModuleUnload(SYSMODULE_HTTP);
-	if(module_https_loaded) sysModuleUnload(SYSMODULE_HTTPS);
-	if(module_ssl_loaded) sysModuleUnload(SYSMODULE_SSL);
-	if(module_net_loaded) sysModuleUnload(SYSMODULE_NET);
-	
-	if(http_pools.http_pool) free(http_pools.http_pool);
-	if(http_pools.ssl_pool) free(http_pools.ssl_pool);
-	if(http_pools.cert_buffer) free(http_pools.cert_buffer);
-	
-	return ret;
+    return HTTP_SUCCESS;
 }
 
-void http_end()
+void http_end(void)
 {
-	if(http_pools.caList) free(http_pools.caList);
-	httpsEnd();
-	sslEnd();
-	httpEnd();
-	netDeinitialize();
-	
-	sysModuleUnload(SYSMODULE_HTTP);
-	sysModuleUnload(SYSMODULE_HTTPS);
-	sysModuleUnload(SYSMODULE_SSL);
-	sysModuleUnload(SYSMODULE_NET);
-
-	if(http_pools.http_pool) free(http_pools.http_pool);
-	if(http_pools.ssl_pool) free(http_pools.ssl_pool);
-	if(http_pools.cert_buffer) free(http_pools.cert_buffer);
-	
-	return;
+    curl_global_cleanup();
 }
 
 char* escape_filename(const char* filename)
@@ -196,200 +68,216 @@ char* escape_filename(const char* filename)
 	int len = strlen(filename);
     char* ret = (char *)calloc(1, len*3);
 
-	httpUtilEscapeUri(ret, len*3, (uint8_t*) filename, len, 0);
+	const char *hex = "0123456789ABCDEF";
+    size_t i;
+    size_t j = 0;
+
+    for(i = 0; filename[i] != '\0'; i++)
+    {
+        unsigned char c = (unsigned char)filename[i];
+
+        if((c >= 'A' && c <= 'Z') ||
+           (c >= 'a' && c <= 'z') ||
+           (c >= '0' && c <= '9') ||
+           c == '-' || c == '_' || c == '.' || c == '~')
+        {
+            ret[j++] = c;
+        }
+        else
+        {
+            ret[j++] = '%';
+            ret[j++] = hex[(c >> 4) & 0x0F];
+            ret[j++] = hex[c & 0x0F];
+        }
+    }
+
+    ret[j] = '\0';
 
 	return ret;
 }
 
-int http_download(const char* url, const char* filename, const char* local_dst)
+typedef struct
 {
-	int ret = 0, httpCode = 0;
-	httpUri uri;
-	httpClientId httpClient = 0;
-	httpTransId httpTrans = 0;
-	FILE* fp=NULL;
-	u32 nRecv = 1;
-	u32 size = 0;
-	uint64_t length = 0;
-	void *uri_pool = NULL;
-	char* escaped_name = NULL;
-	char* escaped_url = NULL;
-	
-	g_download_active = 1;
-	g_download_finished = 0;
-	g_download_result = 0;
-	g_downloaded_bytes = 0;
-	g_download_total = 0;
-	snprintf(g_download_name, sizeof(g_download_name), "%s", filename);
+    FILE *fp;
+    int failed;
+} CurlDownload;
 
-	ret = httpCreateClient(&httpClient);
-	if (ret < 0) {
-		printf("Error : httpCreateClient HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-    httpClientSetConnTimeout(httpClient, 10 * 1000 * 1000);
-    httpClientSetUserAgent(httpClient, HTTP_USER_AGENT);
-    httpClientSetAutoRedirect(httpClient, 1);
+static size_t Acurl_write_callback(void *ptr, size_t size, size_t nmemb, void *userdata)
+{
+    CurlDownload *download = (CurlDownload *)userdata;
+    size_t total = size * nmemb;
 
-	// Escape URL file name characters
-	//escaped_name = escape_filename(filename);
-	if(asprintf(&escaped_url, "%s%s", url, filename) < 0 || escaped_url == NULL)
+    if(cancel) return 0;
+
+    size_t written = fwrite(ptr, 1, total, download->fp);
+
+    g_downloaded_bytes += written;
+
+    if(written != total)
+    {
+        download->failed = 1;
+        return 0;
+    }
+
+    return written;
+}
+
+static int Acurl_progress_callback(void *userdata, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+    (void)userdata;
+    (void)ultotal;
+    (void)ulnow;
+
+    if(dltotal > 0) g_download_total = (uint64_t)dltotal;
+
+    if(cancel) return 1;
+
+    return 0;
+}
+
+int http_download(const char *url, const char *filename, const char *local_dst)
+{
+    CURL *curl = NULL;
+    CURLcode res;
+    long http_code = 0;
+
+    FILE *fp = NULL;
+    char *full_url = NULL;
+
+    CurlDownload download;
+
+    int ret = HTTP_FAILED;
+    int was_cancelled = 0;
+
+    memset(&download, 0, sizeof(download));
+
+    g_download_active = 1;
+    g_download_finished = 0;
+    g_download_result = HTTP_FAILED;
+
+    g_downloaded_bytes = 0;
+    g_download_total = 0;
+
+    snprintf(g_download_name, sizeof(g_download_name), "%s", filename ? filename : "download");
+
+    if(filename && filename[0] != '\0')
+    {
+        if(asprintf(&full_url, "%s%s", url, filename) < 0) full_url = NULL;
+    }
+    else full_url = strdup(url);
+
+    if(!full_url)
+    {
+        printf("Failed to allocate URL\n");
+        goto end;
+    }
+
+    printf("Downloading (%s) -> (%s)\n", full_url, local_dst);
+
+    fp = fopen(local_dst, "wb");
+
+    if(!fp)
+    {
+        printf("Failed to open destination: %s\n", local_dst);
+        goto end;
+    }
+
+    download.fp = fp;
+
+    curl = curl_easy_init();
+
+    if(!curl)
+    {
+        printf("curl_easy_init failed\n");
+        goto end;
+    }
+
+    curl_easy_setopt(curl, CURLOPT_URL, full_url);
+    
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, HTTP_USER_AGENT);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_CAINFO, CA_CERT_PATH);
+    
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
+
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Acurl_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &download);
+    
+    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, Acurl_progress_callback);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, NULL);
+
+    res = curl_easy_perform(curl);
+    
+    char *ip = NULL;
+	CURLcode info_res = curl_easy_getinfo(curl, CURLINFO_PRIMARY_IP, &ip);
+
+	if(info_res == CURLE_OK && ip) printf("Resolved IP: %s\n", ip);
+	else printf("Could not get resolved IP\n");
+
+	if(res != CURLE_OK)
 	{
-		printf("Failed to allocate URL\n");
-		ret = HTTP_FAILED;
-		goto end;
+		printf("curl_easy_perform failed: %s\n", curl_easy_strerror(res));
+		return 0;
 	}
 	
-	printf("Downloading (%s) -> (%s)\n", escaped_url, local_dst);
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-	//URI
-	ret = httpUtilParseUri(&uri, escaped_url, NULL, 0, &size);
-	if (ret < 0) {
-		printf("Error : httpUtilParseUri() HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
+    printf("HTTP status: %ld\n", http_code);
+    if(cancel) was_cancelled = 1;
+    if(res != CURLE_OK)
+    {
+        printf("curl_easy_perform failed: %s\n", curl_easy_strerror(res));
 
-	uri_pool = malloc(size);
-	if (uri_pool == NULL) {
-		printf("Error : out of memory (uri_pool)\n");
-		ret=HTTP_FAILED;
-		goto end;
-	}
+        if(download.failed)
+            printf("File write failed\n");
 
-	ret = httpUtilParseUri(&uri, escaped_url, uri_pool, size, 0);
-	if (ret < 0) {
-		printf("Error : httpUtilParseUri() HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-	//END of URI	
+        goto end;
+    }
 
-	//SEND REQUEST
-	ret = httpCreateTransaction(&httpTrans, httpClient, HTTP_METHOD_GET, &uri);
-	if (ret < 0) {
-		printf("Error : httpCreateTransaction() HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
+    if(http_code < 200 || http_code >= 300)
+    {
+        printf("HTTP request failed: %ld\n", http_code);
+        goto end;
+    }
 
-	ret = httpSendRequest(httpTrans, NULL, 0, NULL);
-	if (ret < 0) {
-		printf("Error : httpSendRequest() HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-	
-	//GET SIZE
-	httpResponseGetContentLength(httpTrans, &length);
-	printf("HTTP length: %llu\n", (unsigned long long)length);
-	g_download_total = length;
+    if(download.failed)
+    {
+        printf("File write failed\n");
+        goto end;
+    }
 
-	ret = httpResponseGetStatusCode(httpTrans, &httpCode);
-	if (ret < 0) {
-		printf("Error : cellHttpResponseGetStatusCode() HTTP_FAILED (%x)\n", ret);
-		ret=HTTP_FAILED;
-		goto end;
-	}
+    ret = HTTP_SUCCESS;
 
-	if(httpCode != HTTP_STATUS_CODE_OK)
-	{
-		printf("Error : Status code (%d)\n", httpCode);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-	
-	//TRANSFER
-	fp = fopen(local_dst, "wb");
-	if(fp == NULL) {
-		printf("Error : fopen() HTTP_FAILED : %s\n", local_dst);
-		ret=HTTP_FAILED;
-		goto end;
-	}
-	
-	int recvRet;
+end:
 
-	while(1)
-	{
-		recvRet = httpRecvResponse(httpTrans, getBuffer, sizeof(getBuffer), &nRecv);
-		if(recvRet < 0)
-		{
-			printf("httpRecvResponse failed: %08X\n", recvRet);
-			ret = HTTP_FAILED;
-			goto end;
-		}
-		
-		if(nRecv == 0) break;
-		
-		size_t written = fwrite(getBuffer, 1, nRecv, fp);
+    if(fp)
+    {
+        fclose(fp);
+        fp = NULL;
+    }
 
-		if(written != nRecv)
-		{
-			printf("fwrite failed: wrote %u / %u bytes\n", (unsigned)written, (unsigned)nRecv);
-			ret = HTTP_FAILED;
-			goto end;
-		}
+    if(curl) curl_easy_cleanup(curl);
 
-		g_downloaded_bytes += written;
+    if(full_url) free(full_url);
 
-		if(cancel) break;
-	}
-	
-	if(fp)
-	{
-		fclose(fp);
-		fp = NULL;
-	}
-	
-	printf("Downloaded:  %llu\n", (unsigned long long)g_downloaded_bytes);
-	printf("Difference:  %lld\n", (long long)g_downloaded_bytes - (long long)length);
-	
-	if(cancel)
-	{
-		unlink((char*)local_dst);
-		ret=HTTP_FAILED;
-		cancel=0;
-		g_download_result = ret;
-		g_download_finished = 1;
-		g_download_active = 0;
-	}
+    if(was_cancelled || ret != HTTP_SUCCESS)
+    {
+        unlink(local_dst);
+        ret = HTTP_FAILED;
+    }
 
-	struct stat st;
+    g_download_result = ret;
+    g_download_finished = 1;
+    g_download_active = 0;
 
-	if(stat(local_dst, &st) == 0)
-	{
-		printf("Actual file size: %lld\n", (long long)st.st_size);
-	}
-	
-	ret = HTTP_SUCCESS;
-	
-	g_download_result = ret;
-	g_download_finished = 1;
-	g_download_active = 0;
+    cancel = 0;
 
-	end:
-	{
-		if(fp)
-		{
-			fclose(fp);
-			fp = NULL;
-		}
-		
-		if(ret != HTTP_SUCCESS) unlink(local_dst);
-		
-		if(httpTrans) httpDestroyTransaction(httpTrans);
-		if(httpClient) httpDestroyClient(httpClient);
-		if(uri_pool) free(uri_pool);
-		if(escaped_url) free(escaped_url);
-		if(escaped_name) free(escaped_name);
-		
-		g_download_result = ret;
-		g_download_finished = 1;
-		g_download_active = 0;
-
-		return ret;
-	}
+    return ret;
 }
 
 void manifest_parse(void *arg)
@@ -423,7 +311,8 @@ void manifest_parse(void *arg)
 	}
 	else
 	{
-		strcpy(manifestVersion, cJSON_GetObjectItem(root, "version")->valuestring);
+		strcpy(manifestVersion, cJSON_GetObjectItem(root, "versionX")->valuestring);
+		// I added here "versionX", so previous versions find the "version", then after update, search for "versionX"
 		printf("JSON VERSION: %s\n", manifestVersion);
 		
 		cJSON *apps = cJSON_GetObjectItem(root, "apps");
@@ -434,7 +323,6 @@ void manifest_parse(void *arg)
 
 		for(i=0;i<gAppCount;i++)
 		{
-			
 			cJSON *app = cJSON_GetArrayItem(apps,i);
 
 			cJSON *item = cJSON_GetObjectItem(app,"id");
@@ -494,6 +382,7 @@ void manifest_parse(void *arg)
 void DownloadThread(void *arg)
 {
 	printf("GET FILE...\n");
+	file_downloaded=0;
     int ret = http_download(download_url, download_file, download_dest);
 	
 	if(ret)
@@ -504,10 +393,7 @@ void DownloadThread(void *arg)
 			printf("download of pkg completed!\n");
 		}
 	}
-	else
-	{
-		printf("failed to download\n");
-	}
+	else printf("failed to download\n");
 	
     download_success = ret ? 1 : 0;
 	

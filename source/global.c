@@ -7,7 +7,7 @@
 #include "soundlib/audioplayer.h"
 
 char global_name[] = "AcidPS3 Store";
-char global_ver[] = "v0.3";
+char global_ver[] = "v0.3.11";
 char global_version[16];
 
 int show_screen_idk = 0;

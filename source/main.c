@@ -12,8 +12,8 @@ static u64 last_time = 0;
 void UpdateNOW()
 {
 	char dpath[256];
-	snprintf(dpath, sizeof(dpath), "archive.org/download/AcidPS3_Store_Data/AcidPS3_Ver/store_%s.pkg", global_ver);
-	Download_Start(data_url, dpath, "/dev_hdd0/packages/AcidPS3_Store.pkg");
+	snprintf(dpath, sizeof(dpath), "github.com/AcidPS3-Project/AcidPS3-Store/releases/latest/download/AcidPS3-Store.pkg");
+	Download_Start(data_url, dpath, "/dev_hdd0/packages/AcidPS3-Store-LATEST.pkg");
 	download_kind = DOWNLOAD_UPDATE;
 }
 
@@ -84,17 +84,17 @@ int main(int argc, const char* argv[])
 	
 	snprintf(global_version, sizeof(global_version), global_ver);
 	
-	sysModuleLoad(SYSMODULE_HTTP);
-	sysModuleLoad(SYSMODULE_NETCTL);
-
+	s32 ret = netInitialize();
+	printf("netInitialize: 0x%08X\n", ret);
+	
+	http_init();
+	
 	sysModuleLoad(SYSMODULE_PNGDEC);
 	Initialize();
 	init_sfx();
 	
 	ioPadInit(7);
     LoadTexture();
-	
-	http_init();
 	
 	setup_colors();
 	

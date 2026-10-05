@@ -5,11 +5,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <http/https.h>
-#include <http/http.h>
-#include <ssl/ssl.h>
+
+#include <sys/time.h>
+#include <curl/curl.h>
+
 #include <net/net.h>
-#include <http/util.h>
 #include <malloc.h>
 #include <io/pad.h>
 #include <sysmodule/sysmodule.h>

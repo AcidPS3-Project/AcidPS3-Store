@@ -35,6 +35,7 @@ void LangInit()
 			langStr[23] = "Download completed.\nCheck /dev_hdd0/packages/.";
 			langStr[24] = "Download failed. It may happened when you are either not connected to the internet, or the server is experienting problems. Try again later.";
 			langStr[25] = "Grid Size";
+			langStr[26] = "UI Type";
 			break;
 		}
 		case 1: // Русский Язык
@@ -65,6 +66,7 @@ void LangInit()
 			langStr[23] = "Скачивание прошло успешно.\nПроверьте здесь: /dev_hdd0/packages/.";
 			langStr[24] = "Скачивание прошло безуспешно. Возможно, вы не подключены  к интернету, или на сервере сейчас идут неполадки. Повторите позднее.";
 			langStr[25] = "Размер клетки";
+			langStr[26] = "Тип интерфейса";
 			break;
 		}
 		case 2: // Қазақ Тілі
@@ -97,6 +99,7 @@ void LangInit()
 			langStr[23] = "Скачивание прошло успешно.\nПроверьте здесь: /dev_hdd0/packages/.";
 			langStr[24] = "Скачивание прошло безуспешно. Возможно, вы не подключены  к интернету, или на сервере сейчас идут неполадки. Повторите позднее.";
 			langStr[25] = "Размер клетки";
+			langStr[26] = "Тип интерфейса";
 			break;
 		}
 	}

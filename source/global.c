@@ -7,7 +7,7 @@
 #include "soundlib/audioplayer.h"
 
 char global_name[] = "AcidPS3 Store";
-char global_ver[] = "v0.3.11";
+char global_ver[] = "v0.4";
 char global_version[16];
 
 int show_screen_idk = 0;
@@ -18,8 +18,9 @@ int need_update = 0;
 int cols = 5;
 
 int menu_setting = 0;
+int ui_type = 0;
 
-bool version_ignore = false;
+bool version_ignore = true;
 bool in_settings = false;
 
 unsigned int color_shade(unsigned int color, float brightness, float alpha)
@@ -79,6 +80,7 @@ float lerp(float min, float max, float ratio)
 int menu_selected = 0;
 int menu_type = 0;
 int menu_index = 0;
+int menu_index2 = 0;
 float menu_index_i = 0;
 
 void EmptyDialogCallback(msgButton button, void *usrData)

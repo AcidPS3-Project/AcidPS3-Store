@@ -22,7 +22,10 @@ extern int m_color;
 extern int menu_selected;
 extern int menu_type;
 extern int menu_index;
+extern int menu_index2;
 extern float menu_index_i;
+
+extern int ui_type;
 
 extern int visibleApps[MAX_APPS];
 extern int visibleCount;

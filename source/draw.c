@@ -253,6 +253,7 @@ void drawScene()
 	int off_x = -20+40;
 	int base_x = 454;
 	int off_y = 60+22;
+	int off_y2 = 400;
     tiny3d_Project2D();
     
 	static float wave_t = 0.0f;
@@ -262,7 +263,7 @@ void drawScene()
 	
 	wave_t += 0.015f;
 	
-	menu_index_i = lerp(menu_index_i, menu_index, 0.1f);
+	menu_index_i = lerp(menu_index_i, menu_index2, 0.1f);
 	
 	DrawRect4(-99, -99, 1280, 720, 6, colorsa[m_color], colorsa[m_color], colorsc[m_color], colorsc[m_color]);
 	
@@ -273,9 +274,11 @@ void drawScene()
 	{
 		DrawFString(off_x, 64, langStr[0]);
 		DrawFString(off_x, 96, langStr[1]);
+		if(ui_type == 1) DrawRect(-66, off_y2+off_y, 1280, 720, 0, colorsa[m_color]);
 	}
 	else if(need_update)
 	{
+		if(ui_type == 1) DrawRect(-66, off_y2+off_y, 1280, 720, 0, colorsa[m_color]);
 		DrawFString(off_x, 96, langStr[2]);
 		DrawFString(off_x, 160, "%s: %s", langStr[3], manifestVersion);
 		DrawFString(off_x, 192, langStr[4]);
@@ -316,48 +319,89 @@ void drawScene()
 			}
 			DrawFString(off_x, off_y+96, "%s: %d", langStr[11], m_color);
 			DrawFString(off_x, off_y+128, "%s: %dX%d", langStr[25], cols, cols);
+			DrawFString(off_x, off_y+160, "%s: %d", langStr[26], ui_type);
+			DrawFString(off_x-20, off_y+64+(menu_setting*32), ">");
+			
+			if(ui_type == 1) DrawRect(-66, off_y2+off_y, 1280, 720, 0, colorsa[m_color]);
+			
 			DrawFString(off_x+36, off_y+424, langStr[12]);
 			DrawButton(off_x, off_y+424, PAD_CIRCLE, -2);
-			DrawFString(off_x-20, off_y+64+(menu_setting*32), ">");
 		}
 		else if(!menu_selected)
 		{
-			int iconW = 400 / cols;
-			int iconH = 400 / cols;
-			int rowsVisible = cols;
-			
-			DrawRect4(off_x-5, off_y-5, 392, 392, 3, colorsb[m_color], colorsb[m_color], colorsd[m_color], colorsd[m_color]);
-
-			int selectedRow = menu_index / cols;
-			if(selectedRow < scrollRow) scrollRow = selectedRow;
-			if(selectedRow >= scrollRow + rowsVisible) scrollRow = selectedRow - rowsVisible + 1;
-
-			for(i = 0; i < visibleCount; i++)
+			if(ui_type==0)
 			{
-				int app = visibleApps[i];
-				int row = i / cols;
-				int col = i % cols;
-				int app_x_pos = base_x + col * iconW;
-				int app_y_pos = off_y + (row - scrollRow) * iconH;
-				if(row < scrollRow || row >= scrollRow + rowsVisible) continue;
+				int iconW = 400 / cols;
+				int iconH = 400 / cols;
+				int rowsVisible = cols;
+				
+				DrawRect4(off_x-5, off_y-5, 392, 392, 3, colorsb[m_color], colorsb[m_color], colorsd[m_color], colorsd[m_color]);
 
-				if(gIcons[app].loaded) SetTexture(gIcons[app].icon, gIcons[app].icon_off);
-				else SetTexture(DefaultIcon, DefaultOff);
+				int selectedRow = menu_index / cols;
+				if(selectedRow < scrollRow) scrollRow = selectedRow;
+				if(selectedRow >= scrollRow + rowsVisible) scrollRow = selectedRow - rowsVisible + 1;
+
+				for(i = 0; i < visibleCount; i++)
+				{
+					int app = visibleApps[i];
+					int row = i / cols;
+					int col = i % cols;
+					int app_x_pos = base_x + col * iconW;
+					int app_y_pos = off_y + (row - scrollRow) * iconH;
+					if(row < scrollRow || row >= scrollRow + rowsVisible) continue;
+
+					if(gIcons[app].loaded) SetTexture(gIcons[app].icon, gIcons[app].icon_off);
+					else SetTexture(DefaultIcon, DefaultOff);
+					
+					u32 viscolor = 0x888888ff;
+					float sizey = 0.89f;
+					if(i == menu_index)
+					{
+						viscolor = 0xffffffff;
+						sizey = 1.09f;
+					}
+					
+					float actualW = iconW * sizey;
+					float actualH = iconH * sizey;
+
+					int centered_x = app_x_pos + (iconW - actualW) / 2;
+					int centered_y = app_y_pos + (iconH - actualH) / 2;
+					
+					DrawIcon(centered_x, centered_y, 1, actualW, actualH, viscolor);
+				}
+				SetFontSize(20, 22);
+				int selected_app = visibleApps[menu_index];
 				
-				u32 viscolor = 0xaaaaaaff;
-				if(i == menu_index) viscolor = 0xffffffff;
+				if(gIcons[selected_app].loaded) SetTexture(gIcons[selected_app].icon, gIcons[selected_app].icon_off);
+					else SetTexture(DefaultIcon, DefaultOff);
 				
-				DrawIcon(app_x_pos, app_y_pos, 1, iconW*0.96f, iconH*0.96f, viscolor);
+				DrawIcon(off_x, off_y, 1, 156, 156, color);
+				DrawWrappedText(off_x+160, off_y, 20, 24, gApps[selected_app].name);
+				DrawWrappedText(off_x, off_y+162, 18, 44, gApps[selected_app].short_desc);
+				SetFontSize(16, 16);
+				DrawFString(off_x, off_y+360, "%s: %s", langStr[17], gApps[selected_app].author);
 			}
-			SetFontSize(20, 22);
-			int selected_app = visibleApps[menu_index];
-			
-			if(gIcons[selected_app].loaded) SetTexture(gIcons[selected_app].icon, gIcons[selected_app].icon_off);
-				else SetTexture(DefaultIcon, DefaultOff);
-			
-			DrawIcon(off_x, off_y, 1, 156, 156, color);
-			DrawWrappedText(off_x+160, off_y, 20, 24, gApps[selected_app].name);
-			DrawWrappedText(off_x, off_y+162, 18, 44, gApps[selected_app].short_desc);
+			else if(ui_type==1)
+			{
+				for(i = 0; i < visibleCount; i++)
+				{
+					int space_y = 100;
+					int app = visibleApps[i];
+					int app_y_pos = off_y+(i*space_y)+((-menu_index_i)*space_y);
+					
+					if(gIcons[app].loaded) SetTexture(gIcons[app].icon, gIcons[app].icon_off);
+						else SetTexture(DefaultIcon, DefaultOff);
+					
+					DrawIcon(off_x, app_y_pos, 1, 88, 88, 0xffffffff);
+					SetFontSize(28, 32);
+					DrawFString(off_x+92, app_y_pos, "%s %s", gApps[app].name, gApps[app].version);
+					SetFontSize(16, 16);
+					DrawFString(off_x+92, 36+app_y_pos, "%s: %s", langStr[17], gApps[app].author);
+					
+					if(i==menu_index2) DrawRectOutline(off_x-5, app_y_pos-5, 1000, 95, 3, 0, 0x00000055);
+				}
+				DrawRect(-66, off_y2+off_y, 1280, 720, 0, colorsa[m_color]);
+			}
 			
 			SetFontSize(28, 32);
 			DrawFString(off_x+36, off_y+384+24, langStr[13]);
@@ -385,6 +429,9 @@ void drawScene()
 			SetFontSize(16, 16);
 			DrawFString(off_x+148, 36+off_y, "%s: %s", langStr[17], gApps[selected_app].author);
 			DrawWrappedText(off_x+148, 56+off_y, 16, 100, gApps[selected_app].description);
+			
+			if(ui_type == 1) DrawRect(-66, off_y2+off_y-45, 1280, 720, 0, colorsa[m_color]);
+			
 			SetFontSize(28, 32);
 			DrawFString(off_x+36, off_y+424, langStr[12]);
 			DrawButton(off_x, off_y+424, PAD_CIRCLE, -2);
@@ -411,6 +458,8 @@ void drawScene()
 				(unsigned long long)g_download_total, langStr[8], percent);
 		}
 	}
+	
+	if(ui_type == 1) DrawRect(-66, -66, 1280, 135, 0, colorsa[m_color]);
 	
 	SetFontSize(28, 32);
 	DrawFString(off_x,-4+22, "%s [%s]", global_name, global_version);

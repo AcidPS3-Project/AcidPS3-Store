@@ -41,8 +41,10 @@ void RefreshVisibleApps()
     }
 
     if(menu_index >= visibleCount) menu_index = visibleCount - 1;
+    if(menu_index2 > visibleCount-1) menu_index2 = visibleCount - 1;
 
     if(menu_index < 0) menu_index = 0;
+    if(menu_index2 < 0) menu_index2 = 0;
 }
 
 FILE *settings_file = NULL;
@@ -59,6 +61,7 @@ void save_settings()
 	fprintf(settings_file, "Color: %d\n", m_color);
 	fprintf(settings_file, "Language: %d\n", language);
     fprintf(settings_file, "Column Size: %d\n", cols);
+    fprintf(settings_file, "UI type: %d\n", ui_type);
 	fclose(settings_file);
 }
 
@@ -105,6 +108,7 @@ int main(int argc, const char* argv[])
 		fscanf(settings_file, "Color: %d\n", &m_color);
     	fscanf(settings_file, "Language: %d\n", &language);
     	fscanf(settings_file, "Column Size: %d\n", &cols);
+    	fscanf(settings_file, "UI type: %d\n", &ui_type);
 		fclose(settings_file);
 	}
 	
@@ -172,7 +176,7 @@ int main(int argc, const char* argv[])
 						PlaySFX(&sfx_move);
 						menu_setting--;
 					}
-					if(control_down && !old_control_down && menu_setting<2)
+					if(control_down && !old_control_down && menu_setting<3)
 					{
 						PlaySFX(&sfx_move);
 						menu_setting++;
@@ -185,6 +189,7 @@ int main(int argc, const char* argv[])
 							case 0:	language--; if(language<0) language=2; LangInit(); break;
 							case 1:	m_color--; if(m_color<0) m_color=12; break;
 							case 2:	if(cols>4) cols--; break;
+							case 3:	if(ui_type>0) ui_type--; break;
 							default: break;
 						}
 					}
@@ -196,6 +201,7 @@ int main(int argc, const char* argv[])
 							case 0:	language++; if(language>2) language=0; LangInit(); break;
 							case 1:	m_color++; if(m_color>12) m_color=0; break;
 							case 2:	if(cols<6) cols++; break;
+							case 3:	if(ui_type<1) ui_type++; break;
 							default: break;
 						}
 					}
@@ -228,41 +234,66 @@ int main(int argc, const char* argv[])
 						menu_setting = 0;
 						in_settings = true;
 					}
-
-					if(control_left && !old_control_left)
+					
+					if(ui_type==0)
 					{
-						if(menu_index % cols != 0)
+						menu_index2 = menu_index;
+						if(control_left && !old_control_left)
 						{
-							PlaySFX(&sfx_move);
-							menu_index--;
+							if(menu_index % cols != 0)
+							{
+								PlaySFX(&sfx_move);
+								menu_index--;
+							}
+						}
+
+						if(control_right && !old_control_right)
+						{
+							if((menu_index % cols) != (cols - 1) &&
+							   (menu_index + 1) < visibleCount)
+							{
+								PlaySFX(&sfx_move);
+								menu_index++;
+							}
+						}
+
+						if(control_up && !old_control_up)
+						{
+							if(menu_index >= cols)
+							{
+								PlaySFX(&sfx_move);
+								menu_index -= cols;
+							}
+						}
+
+						if(control_down && !old_control_down)
+						{
+							if(menu_index + cols < visibleCount)
+							{
+								PlaySFX(&sfx_move);
+								menu_index += cols;
+							}
 						}
 					}
-
-					if(control_right && !old_control_right)
+					else if(ui_type==1)
 					{
-						if((menu_index % cols) != (cols - 1) &&
-						   (menu_index + 1) < visibleCount)
+						menu_index = menu_index2;
+						if(control_up && !old_control_up)
 						{
-							PlaySFX(&sfx_move);
-							menu_index++;
+							if(menu_index2 > 0)
+							{
+								PlaySFX(&sfx_move);
+								menu_index2--;
+							}
 						}
-					}
 
-					if(control_up && !old_control_up)
-					{
-						if(menu_index >= cols)
+						if(control_down && !old_control_down)
 						{
-							PlaySFX(&sfx_move);
-							menu_index -= cols;
-						}
-					}
-
-					if(control_down && !old_control_down)
-					{
-						if(menu_index + cols < visibleCount)
-						{
-							PlaySFX(&sfx_move);
-							menu_index += cols;
+							if(menu_index2 < visibleCount-1)
+							{
+								PlaySFX(&sfx_move);
+								menu_index2++;
+							}
 						}
 					}
 				}

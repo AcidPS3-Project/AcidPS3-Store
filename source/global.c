@@ -20,7 +20,7 @@ int cols = 5;
 int menu_setting = 0;
 int ui_type = 0;
 
-bool version_ignore = true;
+bool version_ignore = false;
 bool in_settings = false;
 
 unsigned int color_shade(unsigned int color, float brightness, float alpha)

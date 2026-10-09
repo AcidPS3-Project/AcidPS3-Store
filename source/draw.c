@@ -316,6 +316,7 @@ void drawScene()
 				case 0: DrawFString(off_x, off_y+64, "Language: English"); break;
 				case 1: DrawFString(off_x, off_y+64, "Язык: Русский"); break;
 				case 2: DrawFString(off_x, off_y+64, "Тілі: Қазақ"); break;
+				case 3: DrawFString(off_x, off_y+64, "Idioma: español"); break;
 			}
 			DrawFString(off_x, off_y+96, "%s: %d", langStr[11], m_color);
 			DrawFString(off_x, off_y+128, "%s: %dX%d", langStr[25], cols, cols);

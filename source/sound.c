@@ -26,7 +26,14 @@ void init_sfx()
 
 void PlayBGM()
 {
-    FILE *fp = (FILE *)mem_open((char *)loop_mp3_bin, loop_mp3_bin_size);
+	FILE *fp = fopen("/dev_hdd0/game/ACIDSTORE/USRDIR/menu.mp3", "rb");
+	
+	if(!fp)
+    {
+        printf("Error! No music found.\n");
+        return;
+    }
+    
     PlayAudiofd(fp, 0, AUDIO_INFINITE_TIME);
 }
 

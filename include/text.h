@@ -3,8 +3,9 @@
 
 #include <libfont.h>
 #include <ft2build.h>
-#include <freetype/freetype.h> 
+#include <freetype/freetype.h>
 #include <freetype/ftglyph.h>
+#include <stdint.h>
 
 FT_Library freetype;
 FT_Face face;

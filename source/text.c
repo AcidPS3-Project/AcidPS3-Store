@@ -1,3 +1,4 @@
+#include "lang.h"
 #include "text.h"
 #include "asimov_ttf_bin.h"
 
@@ -34,34 +35,47 @@ void TTF_to_Bitmap(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
     uint32_t unicode_cp = chr;
     int is_kazakh_qa = 0;
     
-    if      (chr == 0xA1) unicode_cp = 0x04D8;
-    else if (chr == 0xA2) unicode_cp = 0x04D9;
-    else if (chr == 0xA3) unicode_cp = 0x0492;
-    else if (chr == 0xA4) unicode_cp = 0x0493;
+	if (chr == 0xA1) unicode_cp = 0x04D8;
+	else if (chr == 0xA2) unicode_cp = 0x04D9;
+	else if (chr == 0xA3) unicode_cp = 0x0492;
+	else if (chr == 0xA4) unicode_cp = 0x0493;
 	
-    else if (chr == 0xA5) { unicode_cp = 0x049A; is_kazakh_qa = 1; }
+	else if (chr == 0xA5) { unicode_cp = 0x049A; is_kazakh_qa = 1; }
 	else if (chr == 0xA6) { unicode_cp = 0x049B; is_kazakh_qa = 2; }
 	
-    else if (chr == 0xA7) unicode_cp = 0x04A2;
-    else if (chr == 0xAA) unicode_cp = 0x04A3;
+	else if (chr == 0xA7) unicode_cp = 0x04A2;
+	else if (chr == 0xAA) unicode_cp = 0x04A3;
 	
-    else if (chr == 0xAB) unicode_cp = 0x04E8;
-    else if (chr == 0xAC) unicode_cp = 0x04E9;
-    else if (chr == 0xAD) unicode_cp = 0x04AE;
-    else if (chr == 0xAE) unicode_cp = 0x04AF;
-    else if (chr == 0xAF) unicode_cp = 0x04B0;
-    else if (chr == 0xB0) unicode_cp = 0x04B1;
-    else if (chr == 0xB1) unicode_cp = 0x04BA;
-    else if (chr == 0xB2) unicode_cp = 0x04BB;
-    else if (chr == 0xB8) unicode_cp = 0x0451;
+	else if (chr == 0xAB) unicode_cp = 0x04E8;
+	else if (chr == 0xAC) unicode_cp = 0x04E9;
+	else if (chr == 0xAD) unicode_cp = 0x04AE;
+	else if (chr == 0xAE) unicode_cp = 0x04AF;
+	else if (chr == 0xAF) unicode_cp = 0x04B0;
+	else if (chr == 0xB0) unicode_cp = 0x04B1;
+	else if (chr == 0xB1) unicode_cp = 0x04BA;
+	else if (chr == 0xB2) unicode_cp = 0x04BB;
+	else if (chr == 0xB8) unicode_cp = 0x0451;
 	
-    else if (chr >= 192 && chr <= 255) unicode_cp = (uint32_t)chr + 0x0350;
-    else if (chr == 168) unicode_cp = 0x0401;
-    else if (chr == 184) unicode_cp = 0x0451;
+	else if (chr >= 192 && chr <= 255) unicode_cp = (uint32_t)chr + 0x0350;
+	else if (chr == 168) unicode_cp = 0x0401;
+	else if (chr == 184) unicode_cp = 0x0451;
 	
-    if (chr == 0xA5 || chr == 0xA6) {
-        printf("[DEBUG FONT] Loading index: 0x%02X\n", chr);
-    }
+	else if (chr == 0x80) unicode_cp = 0x00A1; // ¡
+	else if (chr == 0x81) unicode_cp = 0x00BF; // ¿
+	else if (chr == 0x82) unicode_cp = 0x00E1; // á
+	else if (chr == 0x83) unicode_cp = 0x00E9; // é
+	else if (chr == 0x84) unicode_cp = 0x00ED; // í
+	else if (chr == 0x85) unicode_cp = 0x00F3; // ó
+	else if (chr == 0x86) unicode_cp = 0x00FA; // ú
+	else if (chr == 0x87) unicode_cp = 0x00FC; // ü
+	else if (chr == 0x88) unicode_cp = 0x00F1; // ñ
+	else if (chr == 0x89) unicode_cp = 0x00C1; // Á
+	else if (chr == 0x8A) unicode_cp = 0x00C9; // É
+	else if (chr == 0x8B) unicode_cp = 0x00CD; // Í
+	else if (chr == 0x8C) unicode_cp = 0x00D3; // Ó
+	else if (chr == 0x8D) unicode_cp = 0x00DA; // Ú
+	else if (chr == 0x8E) unicode_cp = 0x00DC; // Ü
+	else if (chr == 0x8F) unicode_cp = 0x00D1; // Ñ
 	
     if(FT_Load_Char(face, unicode_cp, FT_LOAD_RENDER )) {(*w) = 0; return;}
     
@@ -205,34 +219,58 @@ void utf8_to_cp1251(const char* src, char* dest, size_t max_len)
 	{
         unsigned char c1 = (unsigned char)src[i];
         unsigned char c2 = (unsigned char)src[i + 1];
+		
+	    if (c1 == 0xD3 && c2 == 0x98) { dest[j++] = (char)0xA1; i += 2; continue; } // Ә
+	    if (c1 == 0xD3 && c2 == 0x99) { dest[j++] = (char)0xA2; i += 2; continue; } // ә
+	    if (c1 == 0xD2 && c2 == 0x92) { dest[j++] = (char)0xA3; i += 2; continue; } // Ғ
+	    if (c1 == 0xD2 && c2 == 0x93) { dest[j++] = (char)0xA4; i += 2; continue; } // ғ
+	    
+	    if (c1 == 0xD2 && c2 == 0x9A) { dest[j++] = (char)0xA5; i += 2; continue; } // Қ
+	    if (c1 == 0xD2 && c2 == 0x9B) { dest[j++] = (char)0xA6; i += 2; continue; } // қ
+	    
+	    if (c1 == 0xD2 && c2 == 0xA2) { dest[j++] = (char)0xA7; i += 2; continue; } // Ң
+	    if (c1 == 0xD2 && c2 == 0xA3) { dest[j++] = (char)0xAA; i += 2; continue; } // ң
+	    if (c1 == 0xD3 && c2 == 0xA8) { dest[j++] = (char)0xAB; i += 2; continue; } // Ө
+	    if (c1 == 0xD3 && c2 == 0xA9) { dest[j++] = (char)0xAC; i += 2; continue; } // ө
+	    if (c1 == 0xD2 && c2 == 0xAE) { dest[j++] = (char)0xAD; i += 2; continue; } // Ұ
+	    if (c1 == 0xD2 && c2 == 0xAF) { dest[j++] = (char)0xAE; i += 2; continue; } // ұ
+	    if (c1 == 0xD2 && c2 == 0xB0) { dest[j++] = (char)0xAF; i += 2; continue; } // Ү
+	    if (c1 == 0xD2 && c2 == 0xB1) { dest[j++] = (char)0xB0; i += 2; continue; } // ү
+	    if (c1 == 0xD2 && c2 == 0xBA) { dest[j++] = (char)0xB1; i += 2; continue; } // Һ
+	    if (c1 == 0xD2 && c2 == 0xBB) { dest[j++] = (char)0xB2; i += 2; continue; } // һ
+	    if (c1 == 0xD0 && c2 == 0x86) { dest[j++] = (char)0x49; i += 2; continue; } // І
+	    if (c1 == 0xD1 && c2 == 0x96) { dest[j++] = (char)0x69; i += 2; continue; } // і
 
-        if (c1 == 0xD3 && c2 == 0x98) { dest[j++] = (char)0xA1; i += 2; continue; } // Ә
-        if (c1 == 0xD3 && c2 == 0x99) { dest[j++] = (char)0xA2; i += 2; continue; } // ә
-        if (c1 == 0xD2 && c2 == 0x92) { dest[j++] = (char)0xA3; i += 2; continue; } // Ғ
-        if (c1 == 0xD2 && c2 == 0x93) { dest[j++] = (char)0xA4; i += 2; continue; } // ғ
-        
-        if (c1 == 0xD2 && c2 == 0x9A) { dest[j++] = (char)0xA5; i += 2; continue; } // Қ
-        if (c1 == 0xD2 && c2 == 0x9B) { dest[j++] = (char)0xA6; i += 2; continue; } // қ
-        
-        if (c1 == 0xD2 && c2 == 0xA2) { dest[j++] = (char)0xA7; i += 2; continue; } // Ң
-        if (c1 == 0xD2 && c2 == 0xA3) { dest[j++] = (char)0xAA; i += 2; continue; } // ң
-        if (c1 == 0xD3 && c2 == 0xA8) { dest[j++] = (char)0xAB; i += 2; continue; } // Ө
-        if (c1 == 0xD3 && c2 == 0xA9) { dest[j++] = (char)0xAC; i += 2; continue; } // ө
-        if (c1 == 0xD2 && c2 == 0xAE) { dest[j++] = (char)0xAD; i += 2; continue; } // Ұ
-        if (c1 == 0xD2 && c2 == 0xAF) { dest[j++] = (char)0xAE; i += 2; continue; } // ұ
-        if (c1 == 0xD2 && c2 == 0xB0) { dest[j++] = (char)0xAF; i += 2; continue; } // Ү
-        if (c1 == 0xD2 && c2 == 0xB1) { dest[j++] = (char)0xB0; i += 2; continue; } // ү
-        if (c1 == 0xD2 && c2 == 0xBA) { dest[j++] = (char)0xB1; i += 2; continue; } // Һ
-        if (c1 == 0xD2 && c2 == 0xBB) { dest[j++] = (char)0xB2; i += 2; continue; } // һ
-        if (c1 == 0xD0 && c2 == 0x86) { dest[j++] = (char)0x49; i += 2; continue; } // І
-        if (c1 == 0xD1 && c2 == 0x96) { dest[j++] = (char)0x69; i += 2; continue; } // і
+	    if (c1 == 0xD0 && c2 == 0x81) { dest[j++] = (char)0xA8; i += 2; continue; } // Ё
+	    if (c1 == 0xD1 && c2 == 0x91) { dest[j++] = (char)0xB8; i += 2; continue; } // ё
+	    
+	    if (c1 == 0xD0 && c2 >= 0x90 && c2 <= 0xBF) { dest[j++] = (char)(c2 + 0x30); i += 2; continue; }
+	    if (c1 == 0xD1 && c2 >= 0x80 && c2 <= 0x8F) { dest[j++] = (char)(c2 + 0x70); i += 2; continue; }
+	    
+		if (c1 == 0xC3) {
+	        switch (c2) {
+	            case 0xA1: dest[j++] = (char)0x82; i += 2; continue; // á
+	            case 0xA9: dest[j++] = (char)0x83; i += 2; continue; // é
+	            case 0xAD: dest[j++] = (char)0x84; i += 2; continue; // í
+	            case 0xB3: dest[j++] = (char)0x85; i += 2; continue; // ó
+	            case 0xBA: dest[j++] = (char)0x86; i += 2; continue; // ú
+	            case 0xBC: dest[j++] = (char)0x87; i += 2; continue; // ü
+	            case 0xB1: dest[j++] = (char)0x88; i += 2; continue; // ñ
+	            case 0x81: dest[j++] = (char)0x89; i += 2; continue; // Á
+	            case 0x89: dest[j++] = (char)0x8A; i += 2; continue; // É
+	            case 0x8D: dest[j++] = (char)0x8B; i += 2; continue; // Í
+	            case 0x93: dest[j++] = (char)0x8C; i += 2; continue; // Ó
+	            case 0x9A: dest[j++] = (char)0x8D; i += 2; continue; // Ú
+	            case 0x9C: dest[j++] = (char)0x8E; i += 2; continue; // Ü
+	            case 0x91: dest[j++] = (char)0x8F; i += 2; continue; // Ñ
+	        }
+	    }
 
-        if (c1 == 0xD0 && c2 == 0x81) { dest[j++] = (char)0xA8; i += 2; continue; } // Ё
-        if (c1 == 0xD1 && c2 == 0x91) { dest[j++] = (char)0xB8; i += 2; continue; } // ё
-        
-        if (c1 == 0xD0 && c2 >= 0x90 && c2 <= 0xBF) { dest[j++] = (char)(c2 + 0x30); i += 2; continue; }
-        if (c1 == 0xD1 && c2 >= 0x80 && c2 <= 0x8F) { dest[j++] = (char)(c2 + 0x70); i += 2; continue; }
-
+	    if (c1 == 0xC2) {
+	        if (c2 == 0xA1) { dest[j++] = (char)0x80; i += 2; continue; } // ¡
+	        if (c2 == 0xBF) { dest[j++] = (char)0x81; i += 2; continue; } // ¿
+	    }
+		
         dest[j++] = src[i++];
     }
     dest[j] = '\0';
@@ -240,14 +278,14 @@ void utf8_to_cp1251(const char* src, char* dest, size_t max_len)
 
 void DrawFString(float x, float y, const char* format, ...)
 {
-    char utf8_buffer[1024];
-    char cp1251_buffer[1024];
+	char utf8_buffer[1024];
+	char cp1251_buffer[1024];
 	
-    va_list args;
-    va_start(args, format);
-    vsnprintf(utf8_buffer, sizeof(utf8_buffer), format, args);
-    va_end(args);
+	va_list args;
+	va_start(args, format);
+	vsnprintf(utf8_buffer, sizeof(utf8_buffer), format, args);
+	va_end(args);
 	
-    utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
-    DrawString(x, y, cp1251_buffer);
+	utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
+	DrawString(x, y, cp1251_buffer);
 }

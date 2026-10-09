@@ -9,6 +9,9 @@ static int fps = 0;
 static int frames = 0;
 static u64 last_time = 0;
 
+int max_color = 12;
+int max_lang = 3;
+
 void UpdateNOW()
 {
 	char dpath[256];
@@ -115,9 +118,9 @@ int main(int argc, const char* argv[])
 	if(cols<4) cols=4;
 	if(cols>6) cols=6;
 	if(language<0) language=0;
-	if(language>2) language=2;
+	if(language>max_lang) language=max_lang;
 	if(m_color<0) m_color=0;
-	if(m_color>12) m_color=12;
+	if(m_color>max_color) m_color=max_color;
 	
 	LangInit();
 	
@@ -186,8 +189,8 @@ int main(int argc, const char* argv[])
 						PlaySFX(&sfx_move);
 						switch(menu_setting)
 						{
-							case 0:	language--; if(language<0) language=2; LangInit(); break;
-							case 1:	m_color--; if(m_color<0) m_color=12; break;
+							case 0:	if(language>0) language--; LangInit(); break;
+							case 1:	if(m_color>0) m_color--; break;
 							case 2:	if(cols>4) cols--; break;
 							case 3:	if(ui_type>0) ui_type--; break;
 							default: break;
@@ -198,8 +201,8 @@ int main(int argc, const char* argv[])
 						PlaySFX(&sfx_move);
 						switch(menu_setting)
 						{
-							case 0:	language++; if(language>2) language=0; LangInit(); break;
-							case 1:	m_color++; if(m_color>12) m_color=0; break;
+							case 0:	if(language<max_lang) language++; LangInit(); break;
+							case 1:	if(m_color<max_color) m_color++; break;
 							case 2:	if(cols<6) cols++; break;
 							case 3:	if(ui_type<1) ui_type++; break;
 							default: break;

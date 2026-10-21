@@ -10,7 +10,7 @@ static int frames = 0;
 static u64 last_time = 0;
 
 int max_color = 12;
-int max_lang = 3;
+int max_lang = 4;
 
 void UpdateNOW()
 {

@@ -76,6 +76,12 @@ void TTF_to_Bitmap(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
 	else if (chr == 0x8D) unicode_cp = 0x00DA; // Ú
 	else if (chr == 0x8E) unicode_cp = 0x00DC; // Ü
 	else if (chr == 0x8F) unicode_cp = 0x00D1; // Ñ
+    else if (chr == 0x92) unicode_cp = 0x0404; // Є
+    else if (chr == 0x93) unicode_cp = 0x0454; // є
+    else if (chr == 0x94) unicode_cp = 0x0407; // Ї
+    else if (chr == 0x95) unicode_cp = 0x0457; // ї
+    else if (chr == 0x96) unicode_cp = 0x0490; // Ґ
+    else if (chr == 0x97) unicode_cp = 0x0491; // ґ
 	
     if(FT_Load_Char(face, unicode_cp, FT_LOAD_RENDER )) {(*w) = 0; return;}
     
@@ -244,11 +250,20 @@ void utf8_to_cp1251(const char* src, char* dest, size_t max_len)
 	    if (c1 == 0xD0 && c2 == 0x81) { dest[j++] = (char)0xA8; i += 2; continue; } // Ё
 	    if (c1 == 0xD1 && c2 == 0x91) { dest[j++] = (char)0xB8; i += 2; continue; } // ё
 	    
+		if (c1 == 0xD0 && c2 == 0x84) { dest[j++] = (char)0x92; i += 2; continue; } // Є
+		if (c1 == 0xD1 && c2 == 0x94) { dest[j++] = (char)0x93; i += 2; continue; } // є
+		if (c1 == 0xD0 && c2 == 0x87) { dest[j++] = (char)0x94; i += 2; continue; } // Ї
+		if (c1 == 0xD1 && c2 == 0x97) { dest[j++] = (char)0x95; i += 2; continue; } // ї
+		if (c1 == 0xD2 && c2 == 0x90) { dest[j++] = (char)0x96; i += 2; continue; } // Ґ
+		if (c1 == 0xD2 && c2 == 0x91) { dest[j++] = (char)0x97; i += 2; continue; } // ґ
+		
 	    if (c1 == 0xD0 && c2 >= 0x90 && c2 <= 0xBF) { dest[j++] = (char)(c2 + 0x30); i += 2; continue; }
 	    if (c1 == 0xD1 && c2 >= 0x80 && c2 <= 0x8F) { dest[j++] = (char)(c2 + 0x70); i += 2; continue; }
 	    
-		if (c1 == 0xC3) {
-	        switch (c2) {
+		if (c1 == 0xC3)
+		{
+	        switch (c2)
+	        {
 	            case 0xA1: dest[j++] = (char)0x82; i += 2; continue; // á
 	            case 0xA9: dest[j++] = (char)0x83; i += 2; continue; // é
 	            case 0xAD: dest[j++] = (char)0x84; i += 2; continue; // í
@@ -266,7 +281,8 @@ void utf8_to_cp1251(const char* src, char* dest, size_t max_len)
 	        }
 	    }
 
-	    if (c1 == 0xC2) {
+	    if (c1 == 0xC2)
+	    {
 	        if (c2 == 0xA1) { dest[j++] = (char)0x80; i += 2; continue; } // ¡
 	        if (c2 == 0xBF) { dest[j++] = (char)0x81; i += 2; continue; } // ¿
 	    }

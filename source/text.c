@@ -1,6 +1,7 @@
 #include "lang.h"
 #include "text.h"
 #include "asimov_ttf_bin.h"
+#include "noto_sans_jp_ttf_bin.h"
 
 int ttf_inited = 0;
 
@@ -24,6 +25,11 @@ void TTFUnloadFont()
 void LoadFontIDK()
 {
 	TTFLoadFont(NULL, (void *) asimov_ttf_bin, asimov_ttf_bin_size);
+}
+
+void LoadFontIDK2()
+{
+	TTFLoadFont(NULL, (void *) noto_sans_jp_ttf_bin, noto_sans_jp_ttf_bin_size);
 }
 
 void TTF_to_Bitmap(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
@@ -126,6 +132,27 @@ void TTF_to_Bitmap(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
         *w += 3; 
     }
     
+    *h = slot->bitmap.rows;
+}
+
+void TTF_to_Bitmap2(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
+{
+    FT_Set_Pixel_Sizes(face, (*w), (*h));
+    FT_GlyphSlot slot = face->glyph;
+    memset(bitmap, 0, (*w) * (*h));
+    if(FT_Load_Char(face, (char) chr, FT_LOAD_RENDER )) {(*w) = 0; return;}
+    int n, m, ww;
+    *y_correction = (*h) - 1 - slot->bitmap_top;
+    ww = 0;
+    for(n = 0; n < slot->bitmap.rows; n++) {
+        for (m = 0; m < slot->bitmap.width; m++) {
+            if(m >= (*w) || n >= (*h)) continue;
+            bitmap[m] = (u8) slot->bitmap.buffer[ww + m];
+        }
+		bitmap += *w;
+		ww += slot->bitmap.width;
+    }
+    *w = ((slot->advance.x + 31) >> 6) + ((slot->bitmap_left < 0) ? -slot->bitmap_left : 0);
     *h = slot->bitmap.rows;
 }
 
@@ -302,6 +329,10 @@ void DrawFString(float x, float y, const char* format, ...)
 	vsnprintf(utf8_buffer, sizeof(utf8_buffer), format, args);
 	va_end(args);
 	
-	utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
-	DrawString(x, y, cp1251_buffer);
+	if(language!=5)
+	{
+		utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
+		DrawString(x, y, cp1251_buffer);
+	}
+	else DrawString(x, y, utf8_buffer);
 }

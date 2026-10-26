@@ -9,8 +9,8 @@ static int fps = 0;
 static int frames = 0;
 static u64 last_time = 0;
 
-int max_color = 12;
-int max_lang = 4;
+int max_color = 13;
+int max_lang = 5;
 
 void UpdateNOW()
 {

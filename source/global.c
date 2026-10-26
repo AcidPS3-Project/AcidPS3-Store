@@ -70,6 +70,7 @@ void setup_colors()
 	setup_color(10, 0xE5A708FF);
 	setup_color(11, 0x875B1EFF);
 	setup_color(12, 0xE3412AFF);
+	setup_color(13, 0x009900FF);
 }
 
 float lerp(float min, float max, float ratio)

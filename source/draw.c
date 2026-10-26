@@ -226,6 +226,10 @@ void LoadTexture()
     texture_pointer = (u32 *) AddFontFromTTF((u8 *) texture_pointer, 32, 255, 64, 64, TTF_to_Bitmap);
     TTFUnloadFont();
     
+    LoadFontIDK2();
+    texture_pointer = (u32 *) AddFontFromTTF((u8 *) texture_pointer, 32, 255, 64, 64, TTF_to_Bitmap2);
+    TTFUnloadFont();
+    
 	memcpy(texture_pointer, DefaultIcon.bmp_out, DefaultIcon.pitch * DefaultIcon.height);
 	DefaultOff = tiny3d_TextureOffset(texture_pointer);
 	free(DefaultIcon.bmp_out);
@@ -259,7 +263,9 @@ void drawScene()
 	static float wave_t = 0.0f;
 	SetFontSize(28, 32);
     SetFontColor(0xffffffff, 0x00000000);
-    SetCurrentFont(0);
+    
+    if(language!=5) SetCurrentFont(0);
+    else SetCurrentFont(1);
 	
 	wave_t += 0.015f;
 	
@@ -318,6 +324,7 @@ void drawScene()
 				case 2: DrawFString(off_x, off_y+64, "Тілі: Қазақ"); break;
 				case 3: DrawFString(off_x, off_y+64, "Idioma: Español"); break;
 				case 4: DrawFString(off_x, off_y+64, "Мова: Українська"); break;
+				case 5: DrawFString(off_x, off_y+64, "言語：日本語"); break;
 			}
 			DrawFString(off_x, off_y+96, "%s: %d", langStr[11], m_color);
 			DrawFString(off_x, off_y+128, "%s: %dX%d", langStr[25], cols, cols);

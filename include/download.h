@@ -56,9 +56,7 @@ int gAppCount;
 
 typedef struct
 {
-    pngData icon;
-    u32 icon_off;
-    int loaded;
+    int loaded;       /* Icon PNG has been downloaded to the cache directory. */
     int downloading;
     int init;
 } IconCache;
@@ -85,6 +83,9 @@ extern volatile int download_success;
 extern volatile int download_finished;
 
 int Download_Start(const char *url, const char *file, const char *dest);
+void Download_Cancel(void);
+extern volatile int g_download_cancel_requested;
+extern volatile int g_download_cancelled;
 
 extern volatile int icon_thread_running;
 extern volatile int icons_ready;

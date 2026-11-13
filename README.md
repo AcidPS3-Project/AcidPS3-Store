@@ -3,8 +3,6 @@ AcidPS3 Store is NOT an official store replacement. This is the HOMEBREW STORE O
 
 IT DOES NOT TRIES TO REPLACE THE PlayStation STORE!!
 
-Warning! On store, if the download ends almost immediately, please, restart the download.
-
 Compatible with CFW and HEN.
 
 # How to compile?
@@ -18,3 +16,4 @@ You need a machine running Linux. WSL is supported.
 # Additional Notes
 * The homebrew's code is partially AI-Assisted.
 * This project uses [cJSON](https://github.com/davegamble/cjson). License file can be found [here](CJSON_LICENSE).
+* This project uses RSXUtil. The license for this utility is the same as the store's license.

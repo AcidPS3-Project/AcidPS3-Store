@@ -1,8 +1,8 @@
 #include "libs.h"
-#include "draw.h"
 #include "download.h"
 
-u8 cancel = 0;
+volatile int g_download_cancel_requested = 0;
+volatile int g_download_cancelled = 0;
 
 int downloading_game = 0;
 
@@ -100,6 +100,8 @@ typedef struct
 {
     FILE *fp;
     int failed;
+    volatile int *cancel_flag;
+    int track_progress;
 } CurlDownload;
 
 static size_t Acurl_write_callback(void *ptr, size_t size, size_t nmemb, void *userdata)
@@ -107,11 +109,10 @@ static size_t Acurl_write_callback(void *ptr, size_t size, size_t nmemb, void *u
     CurlDownload *download = (CurlDownload *)userdata;
     size_t total = size * nmemb;
 
-    if(cancel) return 0;
+    if(download->cancel_flag && *download->cancel_flag) return 0;
 
     size_t written = fwrite(ptr, 1, total, download->fp);
-
-    g_downloaded_bytes += written;
+    if(download->track_progress) g_downloaded_bytes += written;
 
     if(written != total)
     {
@@ -124,18 +125,16 @@ static size_t Acurl_write_callback(void *ptr, size_t size, size_t nmemb, void *u
 
 static int Acurl_progress_callback(void *userdata, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
 {
-    (void)userdata;
+    CurlDownload *download = (CurlDownload *)userdata;
     (void)ultotal;
     (void)ulnow;
 
-    if(dltotal > 0) g_download_total = (uint64_t)dltotal;
-
-    if(cancel) return 1;
-
+    if(download->track_progress && dltotal > 0) g_download_total = (uint64_t)dltotal;
+    if(download->cancel_flag && *download->cancel_flag) return 1;
     return 0;
 }
 
-int http_download(const char *url, const char *filename, const char *local_dst)
+static int http_download_internal(CURL **session, const char *url, const char *filename, const char *local_dst, volatile int *cancel_flag, int track_progress)
 {
     CURL *curl = NULL;
     CURLcode res;
@@ -143,23 +142,25 @@ int http_download(const char *url, const char *filename, const char *local_dst)
 
     FILE *fp = NULL;
     char *full_url = NULL;
-
     CurlDownload download;
 
     int ret = HTTP_FAILED;
     int was_cancelled = 0;
 
     memset(&download, 0, sizeof(download));
+    download.cancel_flag = cancel_flag;
+    download.track_progress = track_progress;
 
-    g_download_active = 1;
-    g_download_finished = 0;
-    g_download_result = HTTP_FAILED;
+    if(track_progress)
+    {
+        g_download_active = 1;
+        g_download_finished = 0;
+        g_download_result = HTTP_FAILED;
+        g_downloaded_bytes = 0;
+        g_download_total = 0;
+    }
 
-    g_downloaded_bytes = 0;
-    g_download_total = 0;
-
-    snprintf(g_download_name, sizeof(g_download_name), "%s", filename ? filename : "download");
-
+    if(track_progress) snprintf(g_download_name, sizeof(g_download_name), "%s", filename ? filename : "download");
     if(filename && filename[0] != '\0')
     {
         if(asprintf(&full_url, "%s%s", url, filename) < 0) full_url = NULL;
@@ -175,7 +176,6 @@ int http_download(const char *url, const char *filename, const char *local_dst)
     printf("Downloading (%s) -> (%s)\n", full_url, local_dst);
 
     fp = fopen(local_dst, "wb");
-
     if(!fp)
     {
         printf("Failed to open destination: %s\n", local_dst);
@@ -184,7 +184,13 @@ int http_download(const char *url, const char *filename, const char *local_dst)
 
     download.fp = fp;
 
-    curl = curl_easy_init();
+    if(session)
+    {
+        if(*session) curl_easy_reset(*session);
+        else *session = curl_easy_init();
+        curl = *session;
+    }
+    else curl = curl_easy_init();
 
     if(!curl)
     {
@@ -193,51 +199,42 @@ int http_download(const char *url, const char *filename, const char *local_dst)
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, full_url);
-    
     curl_easy_setopt(curl, CURLOPT_USERAGENT, HTTP_USER_AGENT);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_CAINFO, CA_CERT_PATH);
-    
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 0L);
 
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+    /* Larger receive chunks can reduce callback/write overhead. This is a
+       tuning request; libcurl is allowed to use a smaller buffer. */
+    curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 65536L);
+
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, Acurl_write_callback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &download);
-    
     curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
     curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, Acurl_progress_callback);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, NULL);
+    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, &download);
 
     res = curl_easy_perform(curl);
-    
-    char *ip = NULL;
-	CURLcode info_res = curl_easy_getinfo(curl, CURLINFO_PRIMARY_IP, &ip);
 
-	if(info_res == CURLE_OK && ip) printf("Resolved IP: %s\n", ip);
-	else printf("Could not get resolved IP\n");
-
-	if(res != CURLE_OK)
-	{
-		printf("curl_easy_perform failed: %s\n", curl_easy_strerror(res));
-		return 0;
-	}
-	
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
 
-    printf("HTTP status: %ld\n", http_code);
-    if(cancel) was_cancelled = 1;
+    if(cancel_flag && *cancel_flag && res != CURLE_OK) was_cancelled = 1;
+
     if(res != CURLE_OK)
     {
         printf("curl_easy_perform failed: %s\n", curl_easy_strerror(res));
 
-        if(download.failed)
-            printf("File write failed\n");
+        if(download.failed) printf("File write failed\n");
 
         goto end;
     }
+
+    printf("HTTP status: %ld\n", http_code);
 
     if(http_code < 200 || http_code >= 300)
     {
@@ -254,30 +251,34 @@ int http_download(const char *url, const char *filename, const char *local_dst)
     ret = HTTP_SUCCESS;
 
 end:
-
     if(fp)
     {
         fclose(fp);
         fp = NULL;
     }
 
-    if(curl) curl_easy_cleanup(curl);
-
+    if(!session && curl) curl_easy_cleanup(curl);
     if(full_url) free(full_url);
 
     if(was_cancelled || ret != HTTP_SUCCESS)
     {
-        unlink(local_dst);
+        if(local_dst) unlink(local_dst);
         ret = HTTP_FAILED;
     }
 
-    g_download_result = ret;
-    g_download_finished = 1;
-    g_download_active = 0;
-
-    cancel = 0;
+    if(track_progress)
+    {
+        g_download_result = ret;
+        g_download_finished = 1;
+        g_download_active = 0;
+    }
 
     return ret;
+}
+
+int http_download(const char *url, const char *filename, const char *local_dst)
+{
+    return http_download_internal(NULL, url, filename, local_dst, NULL, 1);
 }
 
 void manifest_parse(void *arg)
@@ -358,13 +359,11 @@ void manifest_parse(void *arg)
 			else strcpy(gApps[i].hidden_game,"yes");
 			
 			item = cJSON_GetObjectItem(app,"description");
-			if(item && item->valuestring)
-				snprintf(gApps[i].description, sizeof(gApps[i].description), "%s", item->valuestring);
+			if(item && item->valuestring) snprintf(gApps[i].description, sizeof(gApps[i].description), "%s", item->valuestring);
 			else snprintf(gApps[i].description, sizeof(gApps[i].description), "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur dui nisl, volutpat maximus libero a, bibendum dignissim arcu. Sed sit amet finibus dolor. Fusce maximus, velit at pellentesque laoreet, tellus nulla sodales nisi, non porttitor dolor massa eget dui. Morbi dictum massa sit amet ex porttitor tincidunt. Nullam tempor lacus quis mauris tristique, non pellentesque magna luctus. Suspendisse urna neque, pulvinar a dignissim sed, venenatis tempus massa. Aliquam pretium purus nec odio ullamcorper viverra. Praesent sed ornare lacus.");
 			
 			item = cJSON_GetObjectItem(app,"short_desc");
-			if(item && item->valuestring)
-				snprintf(gApps[i].short_desc, sizeof(gApps[i].short_desc), "%s", item->valuestring);
+			if(item && item->valuestring) snprintf(gApps[i].short_desc, sizeof(gApps[i].short_desc), "%s", item->valuestring);
 			else snprintf(gApps[i].short_desc, sizeof(gApps[i].short_desc), "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur dui nisl, volutpat maximus libero a, bibendum dignissim arcu. Sed sit amet finibus dolor.");
 			
 			printf("GAME NAME: %s; ID: %s\n", gApps[i].name, gApps[i].id);
@@ -383,7 +382,8 @@ void DownloadThread(void *arg)
 {
 	printf("GET FILE...\n");
 	file_downloaded=0;
-    int ret = http_download(download_url, download_file, download_dest);
+    int ret = http_download_internal(NULL, download_url, download_file, download_dest, &g_download_cancel_requested, 1);
+    g_download_cancelled = (g_download_cancel_requested && !ret) ? 1 : 0;
 	
 	if(ret)
 	{
@@ -397,7 +397,7 @@ void DownloadThread(void *arg)
 	
     download_success = ret ? 1 : 0;
 	
-    if(download_kind != DOWNLOAD_MANIFEST) show_download_dialog = 1;
+    if(download_kind != DOWNLOAD_MANIFEST && !g_download_cancelled) show_download_dialog = 1;
 	
 	file_downloaded=1;
 	download_finished = 1;
@@ -408,19 +408,35 @@ int Download_Start(const char *url, const char *file, const char *dest)
 {
     if(download_thread != 0) return -1;
 
+    g_download_cancel_requested = 0;
+    g_download_cancelled = 0;
+
     snprintf(download_url, sizeof(download_url), "%s", url);
 	snprintf(download_file, sizeof(download_file), "%s", file);
 	snprintf(download_dest, sizeof(download_dest), "%s", dest);
 
     int ret = sysThreadCreate(&download_thread, DownloadThread, NULL, 1000, 0x4000, 0, "DownloadThread");
 	printf("Create ret=%08X thread=%llu\n", ret, (unsigned long long)download_thread);
-	
+    if(ret != 0)
+    {
+        download_thread = 0;
+        file_downloaded = 1;
+        return -1;
+    }
 	return 0;
+}
+
+void Download_Cancel(void)
+{
+    if(g_download_active && download_thread != 0 &&
+       (download_kind == DOWNLOAD_GAME || download_kind == DOWNLOAD_UPDATE))
+        g_download_cancel_requested = 1;
 }
 
 void IconLoaderThread(void *arg)
 {
     int i;
+    CURL *icon_session = NULL;
 
     for(i = 0; i < gAppCount; i++)
     {
@@ -431,15 +447,20 @@ void IconLoaderThread(void *arg)
         char path[256];
         snprintf(path, sizeof(path), "/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons/%s.png", gApps[i].id);
 
-        int ret = http_download(assets_url, gApps[i].icon, path);
+        int ret = http_download_internal(&icon_session, assets_url, gApps[i].icon, path, NULL, 0);
 		if(ret)
         {
-            printf("Loading icon...\n");
+            printf("Icon cached: %s\n", path);
 
-            if(!LoadIconPNG(path, &gIcons[i].icon, &gIcons[i].icon_off)) gIcons[i].loaded = 1;
+            /* The UI thread decodes and uploads PNGs on demand into the
+               bounded RSX texture cache. Keep the downloader off RSX state. */
+            gIcons[i].loaded = 1;
             gIcons[i].init = 1;
         }
     }
+
+    if(icon_session)
+        curl_easy_cleanup(icon_session);
 
     icons_ready = 1;
     icon_thread_running = 0;

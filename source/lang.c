@@ -36,6 +36,7 @@ void LangInit()
 			langStr[24] = "Download failed. It may happened when you are either not connected to the internet, or the server is experiencing problems. Try again later.";
 			langStr[25] = "Grid Size";
 			langStr[26] = "UI Type";
+			langStr[27] = "Cancel";
 			break;
 		}
 		case 1: // Русский Язык
@@ -67,6 +68,7 @@ void LangInit()
 			langStr[24] = "Скачивание прошло безуспешно. Возможно, вы не подключены  к интернету, или на сервере сейчас идут неполадки. Повторите позднее.";
 			langStr[25] = "Размер клетки";
 			langStr[26] = "Тип интерфейса";
+			langStr[27] = "Отменить";
 			break;
 		}
 		case 2: // Қазақ Тілі
@@ -100,6 +102,7 @@ void LangInit()
 			langStr[24] = "Жүктеу сәтсіз аяқталды. Сіз интернетке қосылмаған болуыңыз мүмкін немесе серверде ақаулар бар. Кейінірек қайталап көріңіз.";
 			langStr[25] = "Ұяшық өлшемі";
 			langStr[26] = "Интерфейс түрі";
+			langStr[27] = "Болдырмау";
 			break;
 		}
 		case 3: // Idioma español
@@ -131,6 +134,7 @@ void LangInit()
 			langStr[24] = "La descarga ha fallado. Esto puede ocurrir si no tienes conexión a Internet o si el servidor está experimentando problemas. Inténtalo de nuevo más tarde.";
 			langStr[25] = "Tamaño de la cuadrícula";
 			langStr[26] = "Tipo de interfaz de usuario";
+			langStr[27] = "Cancelar";
 			break;
 		}
 		case 4: // Українська Мова
@@ -162,6 +166,7 @@ void LangInit()
 			langStr[24] = "Завантаження пройшло безуспішно. Можливо, ви не підключені до інтернету, або на сервері йдуть неполадки. повторіть пізніше.";
 			langStr[25] = "Розмір клітини";
 			langStr[26] = "Тип інтерфейсу";
+			langStr[27] = "Скасувати";
 			break;
 		}
 		case 5:
@@ -193,6 +198,7 @@ void LangInit()
 			langStr[24] = "Download failed. It may happened when you are either not connected to the internet, or the server is experiencing problems. Try again later.";
 			langStr[25] = "Grid Size";
 			langStr[26] = "UI Type";
+			langStr[27] = "Cancel";
 			break;
 		}
 	}

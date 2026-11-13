@@ -4,13 +4,31 @@
 #include "sound.h"
 #include "lang.h"
 #include "draw.h"
+#include "text.h"
+#include "rsx_renderer.h"
+#include "rsxutil.h"
 
 static int fps = 0;
 static int frames = 0;
 static u64 last_time = 0;
 
+#define MAX_BUFFERS 2
+
+static volatile int exit_requested = 0;
+static volatile int xmb_open = 0;
+
+static void sysutil_cb(u64 status, u64 param, void *usrdata)
+{
+    (void)param; (void)usrdata;
+    switch (status)
+    {
+        case SYSUTIL_EXIT_GAME:  exit_requested = 1; break;
+        case SYSUTIL_MENU_OPEN:  xmb_open = 1; break;
+        case SYSUTIL_MENU_CLOSE: xmb_open = 0; break;
+    }
+}
 int max_color = 13;
-int max_lang = 5;
+int max_lang = 4;
 
 void UpdateNOW()
 {
@@ -80,10 +98,47 @@ int main(int argc, const char* argv[])
 	static padData oldpad;
 	padData paddata;
 	srand(time(NULL));
-	tiny3d_Init(2*1024*1024);
-	tiny3d_UserViewport(1, 0, 0, (float)(Video_Resolution.width / 916.0f), (float)(Video_Resolution.height / 582.0f),
-		(float)(Video_Resolution.width / 1920.0f), (float)(Video_Resolution.height / 1080.0f));
+	sysUtilRegisterCallback(SYSUTIL_EVENT_SLOT0, sysutil_cb, NULL);
 
+	if(RSX_Init() !=0)
+	{
+		printf("RSX: Init failed!\n");
+		return -1;
+	}
+	
+	u16 screen_width, screen_height;
+	rsxBuffer buffers[MAX_BUFFERS];
+
+	if (!getResolution(&screen_width, &screen_height))
+	{
+		printf("Failed to get display resolution!\n");
+		return -1;
+	}
+
+	printf("Display: %dx%d\n", screen_width, screen_height);
+
+	for (int i = 0; i < MAX_BUFFERS; i++) {
+		if (!makeBuffer(&buffers[i], screen_width, screen_height, i))
+		{
+			printf("Failed to create framebuffer %d!\n", i);
+			return -1;
+		}
+	}
+
+	printf("Both framebuffers created!\n");
+	
+	if (RSX_LoadShaders() != 0)
+	{
+		printf("RSX: shader loading failed!\n");
+		return -1;
+	}
+	
+	if (!RSX_CreateSpriteBuffers())
+	{
+		printf("RSX: sprite buffer creation failed!\n");
+		return -1;
+	}
+	
 	mkdir("/dev_hdd0/game/ACIDSTORE/USRDIR/cache", 0777);
 	mkdir("/dev_hdd0/game/ACIDSTORE/USRDIR/cache/icons", 0777);
 	mkdir("/dev_hdd0/packages", 0777);
@@ -130,16 +185,32 @@ int main(int argc, const char* argv[])
 	Download_Start(assets_url, "manifest.json", manifest_path);
 	download_kind = DOWNLOAD_MANIFEST;
 	
+	for(int i = 0; i < MAX_BUFFERS; i++) RSX_TestDraw(&buffers[i]);
+	if(!flip(RSX_GetContext(), MAX_BUFFERS - 1)) printf("RSX: initial flip failed!\n");
+
+	int currentBuffer = 0;
+	
+	depth_pitch = screen_width * 2;
+
+	depth_buffer = (u32*)rsxMemalign(64, depth_pitch * screen_height);
+	if (!depth_buffer)
+	{
+		printf("RSX: depth buffer allocation failed!\n");
+		return -1;
+	}
+
+	if (rsxAddressToOffset(depth_buffer, &depth_offset) != 0)
+	{
+		printf("RSX: depth buffer offset failed!\n");
+		return -1;
+	}
+
     while(1)
     {
 		sysUtilCheckCallback();
-		UpdateFPS();
+		if (exit_requested) break;
 		
-        tiny3d_Clear(0xff000000, TINY3D_CLEAR_ALL);
-		tiny3d_AlphaTest(1, 0x10, TINY3D_ALPHA_FUNC_GEQUAL);
-		tiny3d_BlendFunc(1, TINY3D_BLEND_FUNC_SRC_RGB_SRC_ALPHA | TINY3D_BLEND_FUNC_SRC_ALPHA_SRC_ALPHA,
-            TINY3D_BLEND_FUNC_DST_RGB_ONE_MINUS_SRC_ALPHA | TINY3D_BLEND_FUNC_DST_ALPHA_ZERO,
-            TINY3D_BLEND_RGB_FUNC_ADD | TINY3D_BLEND_ALPHA_FUNC_ADD);
+		UpdateFPS();
 		ioPadGetInfo(&padinfo);
 		
 		for(i = 0; i < MAX_PADS; i++)
@@ -316,11 +387,12 @@ int main(int argc, const char* argv[])
 						Download_Start(data_url, gApps[selected_app].pkg, dst);
 						download_kind = DOWNLOAD_GAME;
 					}
-					if(paddata.BTN_CIRCLE && !oldpad.BTN_CIRCLE)
-					{
-						PlaySFX(&sfx_cancel);
-						menu_selected = 0;
-					}
+                    if(paddata.BTN_CIRCLE && !oldpad.BTN_CIRCLE)
+                    {
+                        PlaySFX(&sfx_cancel);
+                        if(g_download_active && download_kind == DOWNLOAD_GAME) Download_Cancel();
+                        else menu_selected = 0;
+                    }
 				}
 					
 				old_control_left = control_left;
@@ -331,8 +403,6 @@ int main(int argc, const char* argv[])
 				oldpad = paddata;
 			}
 		}
-		
-		drawScene();
 		
 		if(manifest_done)
 		{
@@ -412,9 +482,24 @@ int main(int argc, const char* argv[])
 			if(sysThreadJoin(icon_thread, &exit_code) == 0) icon_thread = 0;
 		}
 		
-		tiny3d_Flip();
-		usleep(3666);
+		waitFlip();
+		
+		RSX_BeginFrame();
+		
+		RSX_SetRenderTarget(&buffers[currentBuffer]);
+		RSX_SetupViewport();
+		RSX_ClearScreen();
+		
+		drawScene();
+		RSX_FlushDraws();
+		RSX_EndFrameMark();
+		
+		if (!flip(RSX_GetContext(), buffers[currentBuffer].id)) printf("RSX: test flip failed!\n");
+		currentBuffer = (currentBuffer + 1) % MAX_BUFFERS;
     }
 
+	rsxFinish(RSX_GetContext(), 1);
+	ioPadEnd();
+	sysUtilUnregisterCallback(SYSUTIL_EVENT_SLOT0);
     return 0;
 }

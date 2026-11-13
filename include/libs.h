@@ -23,7 +23,6 @@
 #include <sys/stat.h>
 #include <inttypes.h>
 #include <pngdec/pngdec.h>
-#include <tiny3d.h>
 #include <math.h>
 
 #endif

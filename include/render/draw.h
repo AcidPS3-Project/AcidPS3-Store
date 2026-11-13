@@ -16,11 +16,6 @@
 #define PAD_L3 10
 #define PAD_R3 11
 
-pngData DefaultIcon;
-u32 DefaultOff;
-pngData Buttons;
-u32 ButtonsOff;
-
 u32 colorsa[16];
 u32 colorsb[16];
 u32 colorsc[16];
@@ -30,7 +25,6 @@ u32 colorsf[16];
 
 extern int cols;
 
-int LoadIconPNG(const char *path, pngData *tex, u32 *icon_off);
 void LoadTexture();
 void drawScene();
 

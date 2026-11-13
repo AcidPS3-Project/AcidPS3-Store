@@ -1,0 +1,12 @@
+struct FragmentInput
+{
+    float4 color : COLOR0;
+    float2 texcoord : TEXCOORD0;
+};
+
+uniform sampler2D texture0;
+
+float4 main(FragmentInput input) : COLOR
+{
+    return tex2D(texture0, input.texcoord) * input.color;
+}

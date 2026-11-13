@@ -1,338 +1,568 @@
-#include "lang.h"
+#include "libs.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include "rsx_renderer.h"
 #include "text.h"
 #include "asimov_ttf_bin.h"
 #include "noto_sans_jp_ttf_bin.h"
 
-int ttf_inited = 0;
+#define FONT_FIRST       32
+#define FONT_LAST        255
+#define FONT_CELL        64
+#define FONT_PAD         2
+#define FONT_STRIDE      (FONT_CELL + FONT_PAD * 2)
+#define FONT_COLS        16
+#define FONT_ROWS        (((FONT_LAST - FONT_FIRST + 1) + FONT_COLS - 1) / FONT_COLS)
+#define FONT_ATLAS_W     (FONT_COLS * FONT_STRIDE)
+#define FONT_ATLAS_H     (FONT_ROWS * FONT_STRIDE)
 
-int TTFLoadFont(char * path, void * from_memory, int size_from_memory)
+#define JP_CELL          64
+#define JP_PAD           2
+#define JP_STRIDE        (JP_CELL + JP_PAD * 2)
+#define JP_COLS          16
+#define JP_CACHE_SLOTS   256
+#define JP_ROWS          (JP_CACHE_SLOTS / JP_COLS)
+#define JP_ATLAS_W       (JP_COLS * JP_STRIDE)
+#define JP_ATLAS_H       (JP_ROWS * JP_STRIDE)
+
+/* Texture 63 is owned by the renderer's white texture. */
+#define JP_TEX_ID        (RSX_MAX_TEXTURES - 3) /* 61 */
+#define FONT_TEX_ID      (RSX_MAX_TEXTURES - 2) /* 62 */
+#define FONT_SCREEN_W    916.0f
+
+typedef struct
 {
-    if(!ttf_inited) FT_Init_FreeType(&freetype);
-    ttf_inited = 1;
+    uint32_t codepoint;
+    float advance;
+    short rows;
+    short y_corr;
+    short bearing_x;
+    int valid;
+} FontGlyph;
 
-    if(path) {if(FT_New_Face(freetype, path, 0, &face)) return -1;}
-		else {if(FT_New_Memory_Face(freetype, from_memory, size_from_memory, 0, &face)) return -1;}
+static FontGlyph base_glyphs[256];
+static FontGlyph jp_glyphs[JP_CACHE_SLOTS];
+static int jp_glyph_count = 0;
+static int text_ready = 0;
+static int jp_ready = 0;
+static int jp_atlas_dirty = 0;
+static u32 *jp_atlas = NULL;
+static FT_Library freetype;
+static FT_Face base_face = NULL;
+static FT_Face jp_face = NULL;
+static float font_w = 32.0f, font_h = 32.0f;
+static u32 font_color = 0xFFFFFFFF;
+static int font_autocenter = 0;
 
-    return 0;
-}
-
-void TTFUnloadFont()
+static uint32_t cp1251_to_unicode(unsigned char c)
 {
-	FT_Done_FreeType(freetype);
-	ttf_inited = 0;
-}
-
-void LoadFontIDK()
-{
-	TTFLoadFont(NULL, (void *) asimov_ttf_bin, asimov_ttf_bin_size);
-}
-
-void LoadFontIDK2()
-{
-	TTFLoadFont(NULL, (void *) noto_sans_jp_ttf_bin, noto_sans_jp_ttf_bin_size);
-}
-
-void TTF_to_Bitmap(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
-{
-    FT_Set_Pixel_Sizes(face, (*w), (*h));
-    FT_GlyphSlot slot = face->glyph;
-    memset(bitmap, 0, (*w) * (*h));
-    
-    uint32_t unicode_cp = chr;
-    int is_kazakh_qa = 0;
-    
-	if (chr == 0xA1) unicode_cp = 0x04D8;
-	else if (chr == 0xA2) unicode_cp = 0x04D9;
-	else if (chr == 0xA3) unicode_cp = 0x0492;
-	else if (chr == 0xA4) unicode_cp = 0x0493;
-	
-	else if (chr == 0xA5) { unicode_cp = 0x049A; is_kazakh_qa = 1; }
-	else if (chr == 0xA6) { unicode_cp = 0x049B; is_kazakh_qa = 2; }
-	
-	else if (chr == 0xA7) unicode_cp = 0x04A2;
-	else if (chr == 0xAA) unicode_cp = 0x04A3;
-	
-	else if (chr == 0xAB) unicode_cp = 0x04E8;
-	else if (chr == 0xAC) unicode_cp = 0x04E9;
-	else if (chr == 0xAD) unicode_cp = 0x04AE;
-	else if (chr == 0xAE) unicode_cp = 0x04AF;
-	else if (chr == 0xAF) unicode_cp = 0x04B0;
-	else if (chr == 0xB0) unicode_cp = 0x04B1;
-	else if (chr == 0xB1) unicode_cp = 0x04BA;
-	else if (chr == 0xB2) unicode_cp = 0x04BB;
-	else if (chr == 0xB8) unicode_cp = 0x0451;
-	
-	else if (chr >= 192 && chr <= 255) unicode_cp = (uint32_t)chr + 0x0350;
-	else if (chr == 168) unicode_cp = 0x0401;
-	else if (chr == 184) unicode_cp = 0x0451;
-	
-	else if (chr == 0x80) unicode_cp = 0x00A1; // ¡
-	else if (chr == 0x81) unicode_cp = 0x00BF; // ¿
-	else if (chr == 0x82) unicode_cp = 0x00E1; // á
-	else if (chr == 0x83) unicode_cp = 0x00E9; // é
-	else if (chr == 0x84) unicode_cp = 0x00ED; // í
-	else if (chr == 0x85) unicode_cp = 0x00F3; // ó
-	else if (chr == 0x86) unicode_cp = 0x00FA; // ú
-	else if (chr == 0x87) unicode_cp = 0x00FC; // ü
-	else if (chr == 0x88) unicode_cp = 0x00F1; // ñ
-	else if (chr == 0x89) unicode_cp = 0x00C1; // Á
-	else if (chr == 0x8A) unicode_cp = 0x00C9; // É
-	else if (chr == 0x8B) unicode_cp = 0x00CD; // Í
-	else if (chr == 0x8C) unicode_cp = 0x00D3; // Ó
-	else if (chr == 0x8D) unicode_cp = 0x00DA; // Ú
-	else if (chr == 0x8E) unicode_cp = 0x00DC; // Ü
-	else if (chr == 0x8F) unicode_cp = 0x00D1; // Ñ
-    else if (chr == 0x92) unicode_cp = 0x0404; // Є
-    else if (chr == 0x93) unicode_cp = 0x0454; // є
-    else if (chr == 0x94) unicode_cp = 0x0407; // Ї
-    else if (chr == 0x95) unicode_cp = 0x0457; // ї
-    else if (chr == 0x96) unicode_cp = 0x0490; // Ґ
-    else if (chr == 0x97) unicode_cp = 0x0491; // ґ
-	
-    if(FT_Load_Char(face, unicode_cp, FT_LOAD_RENDER )) {(*w) = 0; return;}
-    
-    int n, m, ww;
-    int target_w = *w;
-    int target_h = *h;
-
-    *y_correction = target_h - 1 - slot->bitmap_top;
-    ww = 0;
-
-    for(n = 0; n < slot->bitmap.rows; n++)
+    switch(c)
     {
-        for (m = 0; m < slot->bitmap.width; m++)
-        {
-            if(m >= target_w || n >= target_h) continue;
-            bitmap[m] = (u8) slot->bitmap.buffer[ww + m];
-        }
-        bitmap += target_w;
-        ww += slot->bitmap.width;
+        case 0x80: return 0x00A1; case 0x81: return 0x00BF;
+        case 0x82: return 0x00E1; case 0x83: return 0x00E9;
+        case 0x84: return 0x00ED; case 0x85: return 0x00F3;
+        case 0x86: return 0x00FA; case 0x87: return 0x00FC;
+        case 0x88: return 0x00F1; case 0x89: return 0x00C1;
+        case 0x8A: return 0x00C9; case 0x8B: return 0x00CD;
+        case 0x8C: return 0x00D3; case 0x8D: return 0x00DA;
+        case 0x8E: return 0x00DC; case 0x8F: return 0x00D1;
+        case 0x92: return 0x0404; case 0x93: return 0x0454;
+        case 0x94: return 0x0407; case 0x95: return 0x0457;
+        case 0x96: return 0x0490; case 0x97: return 0x0491;
+        case 0xA1: return 0x04D8; case 0xA2: return 0x04D9;
+        case 0xA3: return 0x0492; case 0xA4: return 0x0493;
+        case 0xA5: return 0x049A; case 0xA6: return 0x049B;
+        case 0xA7: return 0x04A2; case 0xAA: return 0x04A3;
+        case 0xAB: return 0x04E8; case 0xAC: return 0x04E9;
+        case 0xAD: return 0x04AE; case 0xAE: return 0x04AF;
+        case 0xAF: return 0x04B0; case 0xB0: return 0x04B1;
+        case 0xB1: return 0x04BA; case 0xB2: return 0x04BB;
+        case 0xA8: return 0x0401; case 0xB8: return 0x0451;
+        default:
+            if(c >= 0xC0) return (uint32_t)c + 0x0350;
+            return c;
     }
+}
 
-    bitmap -= (target_w * slot->bitmap.rows);
+static int unicode_to_base_byte(uint32_t cp)
+{
+    if(cp >= 0x20 && cp <= 0x7E) return (int)cp;
+    if(cp >= 0x0410 && cp <= 0x044F) return (int)(cp - 0x0350);
+    if(cp == 0x0401) return 0xA8;
+    if(cp == 0x0451) return 0xB8;
+    if(cp == 0x0404) return 0x92;
+    if(cp == 0x0454) return 0x93;
+    if(cp == 0x0407) return 0x94;
+    if(cp == 0x0457) return 0x95;
+    if(cp == 0x0490) return 0x96;
+    if(cp == 0x0491) return 0x97;
+    if(cp == 0x0406) return 'I';
+    if(cp == 0x0456) return 'i';
+    if(cp == 0x04D8) return 0xA1;
+    if(cp == 0x04D9) return 0xA2;
+    if(cp == 0x0492) return 0xA3;
+    if(cp == 0x0493) return 0xA4;
+    if(cp == 0x049A) return 0xA5;
+    if(cp == 0x049B) return 0xA6;
+    if(cp == 0x04A2) return 0xA7;
+    if(cp == 0x04A3) return 0xAA;
+    if(cp == 0x04E8) return 0xAB;
+    if(cp == 0x04E9) return 0xAC;
+    if(cp == 0x04AE) return 0xAD;
+    if(cp == 0x04AF) return 0xAE;
+    if(cp == 0x04B0) return 0xAF;
+    if(cp == 0x04B1) return 0xB0;
+    if(cp == 0x04BA) return 0xB1;
+    if(cp == 0x04BB) return 0xB2;
+    if(cp == 0x00A1) return 0x80;
+    if(cp == 0x00BF) return 0x81;
+    if(cp == 0x00E1) return 0x82;
+    if(cp == 0x00E9) return 0x83;
+    if(cp == 0x00ED) return 0x84;
+    if(cp == 0x00F3) return 0x85;
+    if(cp == 0x00FA) return 0x86;
+    if(cp == 0x00FC) return 0x87;
+    if(cp == 0x00F1) return 0x88;
+    if(cp == 0x00C1) return 0x89;
+    if(cp == 0x00C9) return 0x8A;
+    if(cp == 0x00CD) return 0x8B;
+    if(cp == 0x00D3) return 0x8C;
+    if(cp == 0x00DA) return 0x8D;
+    if(cp == 0x00DC) return 0x8E;
+    if(cp == 0x00D1) return 0x8F;
+    return -1;
+}
 
-    if (is_kazakh_qa > 0) {
-        int base_row = slot->bitmap.rows - 1;
-        int right_edge = slot->bitmap.width - 1;
-        
-        if (right_edge > target_w - 4) right_edge = target_w - 4;
+static int is_japanese_codepoint(uint32_t cp)
+{
+    return (cp >= 0x3000 && cp <= 0x30FF) ||
+           (cp >= 0x31F0 && cp <= 0x31FF) ||
+           (cp >= 0x3400 && cp <= 0x4DBF) ||
+           (cp >= 0x4E00 && cp <= 0x9FFF) ||
+           (cp >= 0xF900 && cp <= 0xFAFF) ||
+           (cp >= 0xFF01 && cp <= 0xFFEF);
+}
 
-        if (base_row > 0 && right_edge > 0) {
-            bitmap[(base_row * target_w) + right_edge + 1] = 255;
-            bitmap[(base_row * target_w) + right_edge + 2] = 255;
-            if (base_row + 1 < target_h) {
-                bitmap[((base_row + 1) * target_w) + right_edge + 2] = 255;
+/* Returns a Unicode codepoint. Invalid UTF-8 bytes are treated as legacy CP1251. */
+static uint32_t next_codepoint(const unsigned char *s, int *used, int *is_utf8)
+{
+    unsigned char a = s[0], b, c, d;
+    *used = 1;
+    *is_utf8 = 0;
+    if(a < 0x80) return a;
+    if(a >= 0xC2 && a <= 0xDF && s[1] != 0 && (s[1] & 0xC0) == 0x80)
+    {
+        *used = 2; *is_utf8 = 1;
+        return ((uint32_t)(a & 0x1F) << 6) | (s[1] & 0x3F);
+    }
+    if(a >= 0xE0 && a <= 0xEF)
+    {
+        b=s[1]; c=(b != 0) ? s[2] : 0;
+        if(b != 0 && c != 0 && (b & 0xC0)==0x80 && (c & 0xC0)==0x80 &&
+           !(a==0xE0 && b<0xA0) && !(a==0xED && b>=0xA0))
+        {
+            *used=3; *is_utf8=1;
+            return ((uint32_t)(a&0x0F)<<12) | ((uint32_t)(b&0x3F)<<6) | (c&0x3F);
+        }
+    }
+    if(a >= 0xF0 && a <= 0xF4)
+    {
+        b=s[1]; c=(b != 0) ? s[2] : 0; d=(c != 0) ? s[3] : 0;
+        if(b != 0 && c != 0 && d != 0 && (b&0xC0)==0x80 && (c&0xC0)==0x80 && (d&0xC0)==0x80 &&
+           !(a==0xF0 && b<0x90) && !(a==0xF4 && b>=0x90))
+        {
+            *used=4; *is_utf8=1;
+            return ((uint32_t)(a&7)<<18) | ((uint32_t)(b&0x3F)<<12) |
+                   ((uint32_t)(c&0x3F)<<6) | (d&0x3F);
+        }
+    }
+    return cp1251_to_unicode(a);
+}
+
+static void copy_ft_bitmap(FT_GlyphSlot slot, u32 *atlas, int atlas_w,
+                           int dst_x, int dst_y, int cell_w, int cell_h)
+{
+    int x, y;
+    FT_Bitmap *bm = &slot->bitmap;
+    for(y = 0; y < (int)bm->rows && y < cell_h; y++)
+    {
+        const unsigned char *row;
+        if(bm->pitch >= 0) row = bm->buffer + y * bm->pitch;
+        else row = bm->buffer + (bm->rows - 1 - y) * (-bm->pitch);
+        for(x = 0; x < (int)bm->width && x < cell_w; x++)
+        {
+            unsigned char alpha = 0;
+            if(bm->pixel_mode == FT_PIXEL_MODE_GRAY) alpha = row[x];
+            else if(bm->pixel_mode == FT_PIXEL_MODE_MONO) alpha = (row[x >> 3] & (0x80 >> (x & 7))) ? 255 : 0;
+            atlas[(size_t)(dst_y + y) * atlas_w + dst_x + x] = ((u32)alpha << 24) | 0x00FFFFFF;
+        }
+    }
+}
+
+static int build_base_atlas(void)
+{
+    u32 *atlas = (u32*)calloc((size_t)FONT_ATLAS_W * FONT_ATLAS_H, sizeof(u32));
+    int c;
+    if(!atlas) return 0;
+    memset(base_glyphs, 0, sizeof(base_glyphs));
+    for(c = FONT_FIRST; c <= FONT_LAST; c++)
+    {
+        int idx = c - FONT_FIRST;
+        int x = (idx % FONT_COLS) * FONT_STRIDE + FONT_PAD;
+        int y = (idx / FONT_COLS) * FONT_STRIDE + FONT_PAD;
+        FT_GlyphSlot slot;
+        uint32_t cp = cp1251_to_unicode((unsigned char)c);
+        if(FT_Set_Pixel_Sizes(base_face, FONT_CELL, FONT_CELL) != 0 ||
+           FT_Load_Char(base_face, cp, FT_LOAD_RENDER) != 0)
+            continue;
+        slot = base_face->glyph;
+        copy_ft_bitmap(slot, atlas, FONT_ATLAS_W, x, y, FONT_CELL, FONT_CELL);
+        /* Preserve the small descender correction used for Kazakh Қ/қ. */
+        if(c == 0xA5 || c == 0xA6)
+        {
+            int base_row = (int)slot->bitmap.rows - 1;
+            int right_edge = (int)slot->bitmap.width - 1;
+            if(right_edge > FONT_CELL - 4) right_edge = FONT_CELL - 4;
+            if(base_row > 0 && right_edge > 0)
+            {
+                atlas[(size_t)(y + base_row) * FONT_ATLAS_W + x + right_edge + 1] = 0xFFFFFFFF;
+                atlas[(size_t)(y + base_row) * FONT_ATLAS_W + x + right_edge + 2] = 0xFFFFFFFF;
+                if(base_row + 1 < FONT_CELL)
+                    atlas[(size_t)(y + base_row + 1) * FONT_ATLAS_W + x + right_edge + 2] = 0xFFFFFFFF;
             }
         }
+        base_glyphs[c].codepoint = cp;
+        base_glyphs[c].advance = (float)((slot->advance.x + 32) >> 6);
+        base_glyphs[c].rows = (short)((slot->bitmap.rows > FONT_CELL) ? FONT_CELL : slot->bitmap.rows);
+        base_glyphs[c].y_corr = (short)(FONT_CELL - 1 - slot->bitmap_top);
+        base_glyphs[c].bearing_x = (short)slot->bitmap_left;
+        base_glyphs[c].valid = 1;
     }
-
-    *w = ((slot->advance.x + 31) >> 6) + ((slot->bitmap_left < 0) ? -slot->bitmap_left : 0);
-    
-    if (is_kazakh_qa > 0) {
-        *w += 3; 
+    if(!RSX_LoadTexture(FONT_TEX_ID, atlas, FONT_ATLAS_W, FONT_ATLAS_H))
+    {
+        free(atlas);
+        return 0;
     }
-    
-    *h = slot->bitmap.rows;
+    free(atlas);
+    RSX_SetTextureFilter(FONT_TEX_ID, 1);
+    return 1;
 }
 
-void TTF_to_Bitmap2(u8 chr, u8 * bitmap, short *w, short *h, short *y_correction)
+static FontGlyph *get_jp_glyph(uint32_t cp)
 {
-    FT_Set_Pixel_Sizes(face, (*w), (*h));
-    FT_GlyphSlot slot = face->glyph;
-    memset(bitmap, 0, (*w) * (*h));
-    if(FT_Load_Char(face, (char) chr, FT_LOAD_RENDER )) {(*w) = 0; return;}
-    int n, m, ww;
-    *y_correction = (*h) - 1 - slot->bitmap_top;
-    ww = 0;
-    for(n = 0; n < slot->bitmap.rows; n++) {
-        for (m = 0; m < slot->bitmap.width; m++) {
-            if(m >= (*w) || n >= (*h)) continue;
-            bitmap[m] = (u8) slot->bitmap.buffer[ww + m];
+    int i, slot_index;
+    FT_GlyphSlot slot;
+    FontGlyph *g;
+    if(!jp_ready || !jp_face) return NULL;
+    for(i = 0; i < jp_glyph_count; i++)
+        if(jp_glyphs[i].codepoint == cp) return &jp_glyphs[i];
+    if(jp_glyph_count >= JP_CACHE_SLOTS) return NULL;
+    if(FT_Get_Char_Index(jp_face, cp) == 0 ||
+       FT_Set_Pixel_Sizes(jp_face, JP_CELL, JP_CELL) != 0 ||
+       FT_Load_Char(jp_face, cp, FT_LOAD_RENDER) != 0)
+        return NULL;
+    slot = jp_face->glyph;
+    slot_index = jp_glyph_count++;
+    g = &jp_glyphs[slot_index];
+    memset(g, 0, sizeof(*g));
+    g->codepoint = cp;
+    g->advance = (float)((slot->advance.x + 32) >> 6);
+    if(g->advance < 1.0f) g->advance = (float)JP_CELL;
+    g->rows = (short)((slot->bitmap.rows > JP_CELL) ? JP_CELL : slot->bitmap.rows);
+    g->y_corr = (short)(JP_CELL - 1 - slot->bitmap_top);
+    g->bearing_x = (short)slot->bitmap_left;
+    g->valid = 1;
+    {
+        int col = slot_index % JP_COLS;
+        int row = slot_index / JP_COLS;
+        int px = col * JP_STRIDE + JP_PAD;
+        int py = row * JP_STRIDE + JP_PAD;
+        int yy;
+        /* Clear the whole cell before drawing this glyph into its atlas slot. */
+        for(yy = 0; yy < JP_STRIDE; yy++)
+            memset(jp_atlas + (size_t)(row * JP_STRIDE + yy) * JP_ATLAS_W + col * JP_STRIDE,
+                   0, JP_STRIDE * sizeof(u32));
+        copy_ft_bitmap(slot, jp_atlas, JP_ATLAS_W, px, py, JP_CELL, JP_CELL);
+        jp_atlas_dirty = 1;
+    }
+    return g;
+}
+
+int Text_Init(void)
+{
+    if(text_ready) return 1;
+    if(FT_Init_FreeType(&freetype) != 0) return 0;
+    if(FT_New_Memory_Face(freetype, (const FT_Byte*)asimov_ttf_bin, (FT_Long)asimov_ttf_bin_size, 0, &base_face) != 0)
+    {
+        FT_Done_FreeType(freetype); return 0;
+    }
+    if(!build_base_atlas())
+    {
+        FT_Done_Face(base_face); base_face=NULL;
+        FT_Done_FreeType(freetype); return 0;
+    }
+    jp_atlas = (u32*)calloc((size_t)JP_ATLAS_W * JP_ATLAS_H, sizeof(u32));
+    if(jp_atlas && RSX_LoadTexture(JP_TEX_ID, jp_atlas, JP_ATLAS_W, JP_ATLAS_H))
+    {
+        RSX_SetTextureFilter(JP_TEX_ID, 1);
+        if(FT_New_Memory_Face(freetype, (const FT_Byte*)noto_sans_jp_ttf_bin, (FT_Long)noto_sans_jp_ttf_bin_size, 0, &jp_face) == 0)
+        {
+            if(FT_Get_Char_Index(jp_face, 0x3042) && FT_Get_Char_Index(jp_face, 0x30A2) && FT_Get_Char_Index(jp_face, 0x65E5))
+				jp_ready = 1;
+            else
+            {
+                printf("TEXT: Noto Sans JP file lacks basic kana/kanji coverage\n");
+                FT_Done_Face(jp_face);
+                jp_face = NULL;
+            }
         }
-		bitmap += *w;
-		ww += slot->bitmap.width;
+        else printf("TEXT: Noto Sans JP could not be opened; Japanese glyphs disabled\n");
     }
-    *w = ((slot->advance.x + 31) >> 6) + ((slot->bitmap_left < 0) ? -slot->bitmap_left : 0);
-    *h = slot->bitmap.rows;
+    else
+    {
+        free(jp_atlas); jp_atlas=NULL;
+        printf("TEXT: Japanese atlas allocation/upload failed\n");
+    }
+    text_ready = 1;
+    printf("TEXT: base atlas ready; Japanese font %s\n", jp_ready ? "ready" : "unavailable");
+    return 1;
 }
 
-void DrawFXString(float x, float y, const char* format, ...)
+void Text_Flush(void)
 {
-	char buffer[1024];
-	
-    va_list args;
-    va_start(args, format);
-    vsnprintf(buffer, sizeof(buffer), format, args);
-    va_end(args);
-	
-    DrawString(x, y, buffer);
+    if(jp_ready && jp_atlas_dirty)
+    {
+        if(RSX_UpdateTexture(JP_TEX_ID, jp_atlas, JP_ATLAS_W, JP_ATLAS_H)) jp_atlas_dirty = 0;
+    }
 }
 
-void DrawWrappedText(float x, float y, float line_h, int max_chars, const char* text)
+void Text_Shutdown(void)
 {
-    char utf8_buffer[1024];
-    char cp1251_buffer[1024];
-	
-    snprintf(utf8_buffer, sizeof(utf8_buffer), text);
-    utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
+    if(base_face) { FT_Done_Face(base_face); base_face=NULL; }
+    if(jp_face) { FT_Done_Face(jp_face); jp_face=NULL; }
+    if(freetype) { FT_Done_FreeType(freetype); freetype=NULL; }
+    RSX_UnloadTexture(FONT_TEX_ID);
+    RSX_UnloadTexture(JP_TEX_ID);
+    free(jp_atlas); jp_atlas=NULL;
+    jp_glyph_count=0; jp_ready=0; jp_atlas_dirty=0; text_ready=0;
+}
 
+void SetFontSize(float sx, float sy) { font_w=sx; font_h=sy; }
+void SetFontColor(u32 rgba, u32 bk_rgba) { (void)bk_rgba; font_color=rgba; }
+void SetFontAutoCenter(int on_off) { font_autocenter=on_off; }
+
+static float glyph_advance(uint32_t cp)
+{
+    int b = unicode_to_base_byte(cp);
+    if(b >= FONT_FIRST && b <= FONT_LAST && base_glyphs[b].valid)
+        return base_glyphs[b].advance;
+    if(is_japanese_codepoint(cp))
+    {
+        FontGlyph *g = get_jp_glyph(cp);
+        if(g) return g->advance;
+        return base_glyphs['?'].advance;
+    }
+    return base_glyphs['?'].advance;
+}
+
+float WidthFromStr(const char *str)
+{
+    float width=0.0f, sx=font_w/FONT_CELL;
+    const unsigned char *p=(const unsigned char*)str;
+    if(!str) return 0.0f;
+    while(*p)
+    {
+        int used, valid_utf8;
+        uint32_t cp=next_codepoint(p,&used,&valid_utf8);
+        (void)valid_utf8;
+        if(cp=='\n') { p+=used; continue; }
+        width += glyph_advance(cp) * sx;
+        p += used;
+    }
+    return width;
+}
+
+float DrawString(float x, float y, const char *str)
+{
+    float sx=font_w/FONT_CELL, sy=font_h/FONT_CELL, start_x;
+    const unsigned char *p=(const unsigned char*)str;
+    if(!text_ready || !str) return x;
+    if(font_autocenter) x=(FONT_SCREEN_W-WidthFromStr(str))*0.5f;
+    start_x=x;
+    while(*p)
+    {
+        int used, valid_utf8;
+        uint32_t cp=next_codepoint(p,&used,&valid_utf8);
+        FontGlyph *g=NULL;
+        int b=-1, tex=FONT_TEX_ID, idx=0, col, row;
+        float u,v,uw,vh,draw_w;
+        (void)valid_utf8;
+        if(cp=='\n') { x=start_x; y+=font_h; p+=used; continue; }
+        b=unicode_to_base_byte(cp);
+        if(b>=FONT_FIRST && b<=FONT_LAST && base_glyphs[b].valid)
+        {
+            g=&base_glyphs[b]; idx=b-FONT_FIRST;
+            col=idx%FONT_COLS; row=idx/FONT_COLS;
+            u=(float)(col*FONT_STRIDE+FONT_PAD)/FONT_ATLAS_W;
+            v=(float)(row*FONT_STRIDE+FONT_PAD)/FONT_ATLAS_H;
+            uw=(float)FONT_CELL/FONT_ATLAS_W;
+            vh=(float)((g->rows>0)?g->rows:1)/FONT_ATLAS_H;
+            draw_w=FONT_CELL*sx;
+        }
+        else if(is_japanese_codepoint(cp) && (g=get_jp_glyph(cp))!=NULL)
+        {
+            tex=JP_TEX_ID;
+            idx=(int)(g-jp_glyphs);
+            col=idx%JP_COLS; row=idx/JP_COLS;
+            u=(float)(col*JP_STRIDE+JP_PAD)/JP_ATLAS_W;
+            v=(float)(row*JP_STRIDE+JP_PAD)/JP_ATLAS_H;
+            uw=(float)JP_CELL/JP_ATLAS_W;
+            vh=(float)((g->rows>0)?g->rows:1)/JP_ATLAS_H;
+            draw_w=JP_CELL*sx;
+        }
+        else
+        {
+            g=&base_glyphs['?']; idx='?'-FONT_FIRST;
+            col=idx%FONT_COLS; row=idx/FONT_COLS;
+            u=(float)(col*FONT_STRIDE+FONT_PAD)/FONT_ATLAS_W;
+            v=(float)(row*FONT_STRIDE+FONT_PAD)/FONT_ATLAS_H;
+            uw=(float)FONT_CELL/FONT_ATLAS_W;
+            vh=(float)((g->rows>0)?g->rows:1)/FONT_ATLAS_H;
+            draw_w=FONT_CELL*sx;
+        }
+        if(g && g->valid && g->rows>0)
+            RSX_DrawSprite2D(tex, x+g->bearing_x*sx, y+g->y_corr*sy,
+                             draw_w, g->rows*sy, u,v,uw,vh,font_color);
+        x += (g && g->valid) ? g->advance*sx : font_w;
+        p += used;
+    }
+    return x;
+}
+
+float DrawFormatString(float x, float y, const char *format, ...)
+{
+    char buffer[2048]; va_list args;
+    va_start(args,format); vsnprintf(buffer,sizeof(buffer),format,args); va_end(args);
+    return DrawString(x,y,buffer);
+}
+
+void DrawFXString(float x, float y, const char *format, ...)
+{
+    char buffer[2048]; va_list args;
+    va_start(args,format); vsnprintf(buffer,sizeof(buffer),format,args); va_end(args);
+    DrawString(x,y,buffer);
+}
+
+void DrawFString(float x, float y, const char *format, ...)
+{
+    char buffer[2048]; va_list args;
+    va_start(args,format); vsnprintf(buffer,sizeof(buffer),format,args); va_end(args);
+    DrawString(x,y,buffer);
+}
+
+void utf8_to_cp1251(const char *src, char *dest, size_t max_len)
+{
+    size_t i=0,j=0;
+    if(!src || !dest || max_len==0) return;
+    while(src[i] && j<max_len-1)
+    {
+        unsigned char c1=(unsigned char)src[i], c2=(unsigned char)src[i+1];
+        if(c1==0xD3 && c2==0x98) { dest[j++]=(char)0xA1; i+=2; continue; }
+        if(c1==0xD3 && c2==0x99) { dest[j++]=(char)0xA2; i+=2; continue; }
+        if(c1==0xD2 && c2==0x92) { dest[j++]=(char)0xA3; i+=2; continue; }
+        if(c1==0xD2 && c2==0x93) { dest[j++]=(char)0xA4; i+=2; continue; }
+        if(c1==0xD2 && c2==0x9A) { dest[j++]=(char)0xA5; i+=2; continue; }
+        if(c1==0xD2 && c2==0x9B) { dest[j++]=(char)0xA6; i+=2; continue; }
+        if(c1==0xD2 && c2==0xA2) { dest[j++]=(char)0xA7; i+=2; continue; }
+        if(c1==0xD2 && c2==0xA3) { dest[j++]=(char)0xAA; i+=2; continue; }
+        if(c1==0xD3 && c2==0xA8) { dest[j++]=(char)0xAB; i+=2; continue; }
+        if(c1==0xD3 && c2==0xA9) { dest[j++]=(char)0xAC; i+=2; continue; }
+        if(c1==0xD2 && c2==0xAE) { dest[j++]=(char)0xAD; i+=2; continue; }
+        if(c1==0xD2 && c2==0xAF) { dest[j++]=(char)0xAE; i+=2; continue; }
+        if(c1==0xD2 && c2==0xB0) { dest[j++]=(char)0xAF; i+=2; continue; }
+        if(c1==0xD2 && c2==0xB1) { dest[j++]=(char)0xB0; i+=2; continue; }
+        if(c1==0xD2 && c2==0xBA) { dest[j++]=(char)0xB1; i+=2; continue; }
+        if(c1==0xD2 && c2==0xBB) { dest[j++]=(char)0xB2; i+=2; continue; }
+        if(c1==0xD0 && c2==0x81) { dest[j++]=(char)0xA8; i+=2; continue; }
+        if(c1==0xD1 && c2==0x91) { dest[j++]=(char)0xB8; i+=2; continue; }
+        if(c1==0xD0 && c2==0x86) { dest[j++]='I'; i+=2; continue; }
+        if(c1==0xD1 && c2==0x96) { dest[j++]='i'; i+=2; continue; }
+        if(c1==0xD0 && c2==0x84) { dest[j++]=(char)0x92; i+=2; continue; }
+        if(c1==0xD1 && c2==0x94) { dest[j++]=(char)0x93; i+=2; continue; }
+        if(c1==0xD0 && c2==0x87) { dest[j++]=(char)0x94; i+=2; continue; }
+        if(c1==0xD1 && c2==0x97) { dest[j++]=(char)0x95; i+=2; continue; }
+        if(c1==0xD2 && c2==0x90) { dest[j++]=(char)0x96; i+=2; continue; }
+        if(c1==0xD2 && c2==0x91) { dest[j++]=(char)0x97; i+=2; continue; }
+        if(c1==0xD0 && c2>=0x90 && c2<=0xBF) { dest[j++]=(char)(c2+0x30); i+=2; continue; }
+        if(c1==0xD1 && c2>=0x80 && c2<=0x8F) { dest[j++]=(char)(c2+0x70); i+=2; continue; }
+        if(c1==0xC3)
+        {
+            switch(c2)
+            {
+                case 0xA1: dest[j++]=(char)0x82; i+=2; continue;
+                case 0xA9: dest[j++]=(char)0x83; i+=2; continue;
+                case 0xAD: dest[j++]=(char)0x84; i+=2; continue;
+                case 0xB3: dest[j++]=(char)0x85; i+=2; continue;
+                case 0xBA: dest[j++]=(char)0x86; i+=2; continue;
+                case 0xBC: dest[j++]=(char)0x87; i+=2; continue;
+                case 0xB1: dest[j++]=(char)0x88; i+=2; continue;
+                case 0x81: dest[j++]=(char)0x89; i+=2; continue;
+                case 0x89: dest[j++]=(char)0x8A; i+=2; continue;
+                case 0x8D: dest[j++]=(char)0x8B; i+=2; continue;
+                case 0x93: dest[j++]=(char)0x8C; i+=2; continue;
+                case 0x9A: dest[j++]=(char)0x8D; i+=2; continue;
+                case 0x9C: dest[j++]=(char)0x8E; i+=2; continue;
+                case 0x91: dest[j++]=(char)0x8F; i+=2; continue;
+            }
+        }
+        if(c1==0xC2 && c2==0xA1) { dest[j++]=(char)0x80; i+=2; continue; }
+        if(c1==0xC2 && c2==0xBF) { dest[j++]=(char)0x81; i+=2; continue; }
+        dest[j++]=src[i++];
+    }
+    dest[j]='\0';
+}
+
+void DrawWrappedText(float x, float y, float line_h, int max_chars, const char *text)
+{
     char line[1024];
-    char word[256];
-    int line_len = 0;
-    int word_len = 0;
-    int i = 0;
-
-    line[0] = '\0';
-    word[0] = '\0';
-
-    while(1)
+    int line_bytes=0, line_chars=0;
+    const unsigned char *p=(const unsigned char*)text;
+    if(!text || max_chars<=0) return;
+    line[0]='\0';
+    while(*p)
     {
-        char c = cp1251_buffer[i];
-
-        if(c != ' ' && c != '\0' && c != '\n')
+        int used, valid;
+        uint32_t cp=next_codepoint(p,&used,&valid);
+        (void)valid;
+        if(cp=='\n' || cp==' ' || cp=='\t' || cp==0)
         {
-            if(word_len < sizeof(word) - 1)
+            if(cp==' ' || cp=='\t')
             {
-                word[word_len++] = c;
-                word[word_len] = '\0';
+                if(line_chars < max_chars && line_bytes+used < (int)sizeof(line)-1)
+                { memcpy(line+line_bytes,p,used); line_bytes+=used; line[line_bytes]='\0'; line_chars++; }
             }
+            else
+            {
+                if(line_bytes) DrawString(x,y,line);
+                y+=line_h; line_bytes=0; line_chars=0; line[0]='\0';
+            }
+            p+=used;
+            continue;
         }
-
-        if(c == ' ' || c == '\0' || c == '\n')
+        if(line_chars >= max_chars)
         {
-            if(word_len > 0)
-            {
-                int needed = word_len;
-                if(line_len > 0) needed += 1;
-
-                if(line_len + needed > max_chars)
-                {
-                    DrawFXString(x, y, "%s", line);
-                    y += line_h;
-
-                    strcpy(line, word);
-                    line_len = word_len;
-                }
-                else
-                {
-                    if(line_len > 0)
-                    {
-                        strcat(line, " ");
-                        line_len++;
-                    }
-                    strcat(line, word);
-                    line_len += word_len;
-                }
-
-                word[0] = '\0';
-                word_len = 0;
-            }
-
-            if(c == '\n')
-            {
-                DrawFXString(x, y, "%s", line);
-                y += line_h;
-                line[0] = '\0';
-                line_len = 0;
-            }
-
-            if(c == '\0') break;
+            DrawString(x,y,line); y+=line_h; line_bytes=0; line_chars=0; line[0]='\0';
         }
-
-        i++;
+        if(line_bytes+used < (int)sizeof(line)-1)
+        {
+            memcpy(line+line_bytes,p,used); line_bytes+=used; line[line_bytes]='\0'; line_chars++;
+        }
+        p+=used;
     }
-
-    if(line_len > 0) DrawFXString(x, y, "%s", line);
-}
-
-void utf8_to_cp1251(const char* src, char* dest, size_t max_len)
-{
-    size_t i = 0, j = 0;
-    while (src[i] != '\0' && j < max_len - 1)
-	{
-        unsigned char c1 = (unsigned char)src[i];
-        unsigned char c2 = (unsigned char)src[i + 1];
-		
-	    if (c1 == 0xD3 && c2 == 0x98) { dest[j++] = (char)0xA1; i += 2; continue; } // Ә
-	    if (c1 == 0xD3 && c2 == 0x99) { dest[j++] = (char)0xA2; i += 2; continue; } // ә
-	    if (c1 == 0xD2 && c2 == 0x92) { dest[j++] = (char)0xA3; i += 2; continue; } // Ғ
-	    if (c1 == 0xD2 && c2 == 0x93) { dest[j++] = (char)0xA4; i += 2; continue; } // ғ
-	    
-	    if (c1 == 0xD2 && c2 == 0x9A) { dest[j++] = (char)0xA5; i += 2; continue; } // Қ
-	    if (c1 == 0xD2 && c2 == 0x9B) { dest[j++] = (char)0xA6; i += 2; continue; } // қ
-	    
-	    if (c1 == 0xD2 && c2 == 0xA2) { dest[j++] = (char)0xA7; i += 2; continue; } // Ң
-	    if (c1 == 0xD2 && c2 == 0xA3) { dest[j++] = (char)0xAA; i += 2; continue; } // ң
-	    if (c1 == 0xD3 && c2 == 0xA8) { dest[j++] = (char)0xAB; i += 2; continue; } // Ө
-	    if (c1 == 0xD3 && c2 == 0xA9) { dest[j++] = (char)0xAC; i += 2; continue; } // ө
-	    if (c1 == 0xD2 && c2 == 0xAE) { dest[j++] = (char)0xAD; i += 2; continue; } // Ұ
-	    if (c1 == 0xD2 && c2 == 0xAF) { dest[j++] = (char)0xAE; i += 2; continue; } // ұ
-	    if (c1 == 0xD2 && c2 == 0xB0) { dest[j++] = (char)0xAF; i += 2; continue; } // Ү
-	    if (c1 == 0xD2 && c2 == 0xB1) { dest[j++] = (char)0xB0; i += 2; continue; } // ү
-	    if (c1 == 0xD2 && c2 == 0xBA) { dest[j++] = (char)0xB1; i += 2; continue; } // Һ
-	    if (c1 == 0xD2 && c2 == 0xBB) { dest[j++] = (char)0xB2; i += 2; continue; } // һ
-	    if (c1 == 0xD0 && c2 == 0x86) { dest[j++] = (char)0x49; i += 2; continue; } // І
-	    if (c1 == 0xD1 && c2 == 0x96) { dest[j++] = (char)0x69; i += 2; continue; } // і
-
-	    if (c1 == 0xD0 && c2 == 0x81) { dest[j++] = (char)0xA8; i += 2; continue; } // Ё
-	    if (c1 == 0xD1 && c2 == 0x91) { dest[j++] = (char)0xB8; i += 2; continue; } // ё
-	    
-		if (c1 == 0xD0 && c2 == 0x84) { dest[j++] = (char)0x92; i += 2; continue; } // Є
-		if (c1 == 0xD1 && c2 == 0x94) { dest[j++] = (char)0x93; i += 2; continue; } // є
-		if (c1 == 0xD0 && c2 == 0x87) { dest[j++] = (char)0x94; i += 2; continue; } // Ї
-		if (c1 == 0xD1 && c2 == 0x97) { dest[j++] = (char)0x95; i += 2; continue; } // ї
-		if (c1 == 0xD2 && c2 == 0x90) { dest[j++] = (char)0x96; i += 2; continue; } // Ґ
-		if (c1 == 0xD2 && c2 == 0x91) { dest[j++] = (char)0x97; i += 2; continue; } // ґ
-		
-	    if (c1 == 0xD0 && c2 >= 0x90 && c2 <= 0xBF) { dest[j++] = (char)(c2 + 0x30); i += 2; continue; }
-	    if (c1 == 0xD1 && c2 >= 0x80 && c2 <= 0x8F) { dest[j++] = (char)(c2 + 0x70); i += 2; continue; }
-	    
-		if (c1 == 0xC3)
-		{
-	        switch (c2)
-	        {
-	            case 0xA1: dest[j++] = (char)0x82; i += 2; continue; // á
-	            case 0xA9: dest[j++] = (char)0x83; i += 2; continue; // é
-	            case 0xAD: dest[j++] = (char)0x84; i += 2; continue; // í
-	            case 0xB3: dest[j++] = (char)0x85; i += 2; continue; // ó
-	            case 0xBA: dest[j++] = (char)0x86; i += 2; continue; // ú
-	            case 0xBC: dest[j++] = (char)0x87; i += 2; continue; // ü
-	            case 0xB1: dest[j++] = (char)0x88; i += 2; continue; // ñ
-	            case 0x81: dest[j++] = (char)0x89; i += 2; continue; // Á
-	            case 0x89: dest[j++] = (char)0x8A; i += 2; continue; // É
-	            case 0x8D: dest[j++] = (char)0x8B; i += 2; continue; // Í
-	            case 0x93: dest[j++] = (char)0x8C; i += 2; continue; // Ó
-	            case 0x9A: dest[j++] = (char)0x8D; i += 2; continue; // Ú
-	            case 0x9C: dest[j++] = (char)0x8E; i += 2; continue; // Ü
-	            case 0x91: dest[j++] = (char)0x8F; i += 2; continue; // Ñ
-	        }
-	    }
-
-	    if (c1 == 0xC2)
-	    {
-	        if (c2 == 0xA1) { dest[j++] = (char)0x80; i += 2; continue; } // ¡
-	        if (c2 == 0xBF) { dest[j++] = (char)0x81; i += 2; continue; } // ¿
-	    }
-		
-        dest[j++] = src[i++];
-    }
-    dest[j] = '\0';
-}
-
-void DrawFString(float x, float y, const char* format, ...)
-{
-	char utf8_buffer[1024];
-	char cp1251_buffer[1024];
-	
-	va_list args;
-	va_start(args, format);
-	vsnprintf(utf8_buffer, sizeof(utf8_buffer), format, args);
-	va_end(args);
-	
-	if(language!=5)
-	{
-		utf8_to_cp1251(utf8_buffer, cp1251_buffer, sizeof(cp1251_buffer));
-		DrawString(x, y, cp1251_buffer);
-	}
-	else DrawString(x, y, utf8_buffer);
+    if(line_bytes) DrawString(x,y,line);
 }
